@@ -11,7 +11,6 @@
 //   - VPS section: 3xui clients / inbounds (only when kind == vps)
 
 import 'package:flutter/material.dart';
-import 'add_server_dialog.dart';
 import 'models.dart';
 import 'store.dart';
 import 'widgets.dart';
@@ -31,7 +30,7 @@ class DynamicServerPage extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
         children: [
-          _Header(server: server, agent: agent, store: store),
+          _Header(server: server, agent: agent),
           const SizedBox(height: 10),
           if (agent == null) _loadingCard() else ..._buildBody(agent),
           const SizedBox(height: 8),
@@ -123,8 +122,7 @@ class DynamicServerPage extends StatelessWidget {
 class _Header extends StatelessWidget {
   final MonitorServer server;
   final AgentData? agent;
-  final MonitorStore store;
-  const _Header({required this.server, required this.agent, required this.store});
+  const _Header({required this.server, required this.agent});
 
   @override
   Widget build(BuildContext context) {
@@ -172,16 +170,6 @@ class _Header extends StatelessWidget {
                 ),
               ),
               _StatusBadge(online: online, secondsAgo: agent?.secondsAgo ?? -1),
-              const SizedBox(width: 4),
-              IconButton(
-                icon: const Icon(Icons.edit_rounded, size: 20),
-                color: const Color(0xFF7A7A82),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                visualDensity: VisualDensity.compact,
-                tooltip: '编辑服务器',
-                onPressed: () => AddServerDialog.show(context, store, initial: server),
-              ),
             ],
           ),
           const SizedBox(height: 12),

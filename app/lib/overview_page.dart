@@ -30,31 +30,12 @@ class OverviewPage extends StatelessWidget {
       color: const Color(0xFFFF6B95),
       backgroundColor: Colors.white,
       onRefresh: () async => Future.delayed(const Duration(milliseconds: 500)),
-      // 用 Material(type: transparency) 显式声明这里不画底色，
-      // 让 Stack 底层的渐变在卡片之间的空隙也能透出来。
-      child: Material(
-        type: MaterialType.transparency,
-        child: ReorderableListView(
+      // 唯一改动：SliverReorderableList 在 v2.2.0 视觉坏（拖手柄列被拉成卡片全高），
+      // 换成普通 ReorderableListView。其它逻辑 / 卡片结构 / 长按=菜单 / 拖手柄在右
+      // 全部保持 v2.2.0 原样。
+      child: ReorderableListView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
         buildDefaultDragHandles: false,
-        // 拖动中的卡片：保持白底 + 浮起来的粉色阴影，跟静态卡片视觉一致
-        proxyDecorator: (child, index, animation) => Material(
-          elevation: 0,
-          color: Colors.transparent,
-          child: Transform.scale(
-            scale: 1.02,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: const [
-                  BoxShadow(color: Color(0x33FF6B95), blurRadius: 24, offset: Offset(0, 8)),
-                  BoxShadow(color: Color(0x1A000000), blurRadius: 16, offset: Offset(0, 4)),
-                ],
-              ),
-              child: child,
-            ),
-          ),
-        ),
         onReorder: (oldIndex, newIndex) {
           store.reorderServers(oldIndex, newIndex);
         },
@@ -93,7 +74,6 @@ class OverviewPage extends StatelessWidget {
               ),
             ),
         ],
-        ),
       ),
     );
   }
@@ -167,180 +147,122 @@ class _ServerCard extends StatelessWidget {
     final temp = cpu?.tempC ?? 0;
     final isVps = agent?.isVps ?? false;
 
-    // 长按卡片 → 打开菜单（含编辑/删除/补 Token）
-    // 拖动 → 改用卡片右侧的拖拽手柄 Icons.drag_indicator
-    return GestureDetector(
-      onLongPress: () => _showServerMenu(context),
-      child: GlassCard(
-        onTap: () => store.selectServer(server),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: GlassCard(
+            onTap: () => store.selectServer(server),
+            onLongPress: () => _showServerMenu(context),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  isVps ? Icons.public_rounded : Icons.dns_rounded,
-                  size: 20,
-                  color: const Color(0xFFFF6B95),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    server.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A)),
-                  ),
-                ),
-                StatusBadge(agent: agent),
-                const SizedBox(width: 4),
-                IconButton(
-                  icon: const Icon(Icons.more_horiz_rounded, size: 20),
-                  color: const Color(0xFF7A7A82),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                  visualDensity: VisualDensity.compact,
-                  tooltip: '更多',
-                  onPressed: () => _showServerMenu(context),
-                ),
-                // 拖拽手柄：长按这个图标才进入拖动排序模式
-                ReorderableDragStartListener(
-                  index: index,
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      Icons.drag_indicator_rounded,
-                      size: 20,
-                      color: Color(0xFFB5B5BD),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            if (agent == null) ...[
-              Builder(builder: (ctx) {
-                final err = store.errorFor(server);
-                final isTokenIssue = err != null &&
-                    (err.contains('未配置 agent token') ||
-                     err.contains('Token') ||
-                     err.contains('token') ||
-                     err.contains('401') ||
-                     err.contains('403'));
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.cloud_off_rounded, size: 14, color: Color(0xFFE53935)),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            err ?? '暂无数据（首次拉取中）',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: err != null ? const Color(0xFFE53935) : const Color(0xFF9CA3AF),
-                              fontSize: 11,
-                              fontFamily: err != null ? 'monospace' : null,
-                            ),
-                          ),
-                        ),
-                        _RefreshBtn(onTap: () => store.pollServer(server)),
-                      ],
+                    Icon(
+                      isVps ? Icons.public_rounded : Icons.dns_rounded,
+                      size: 20,
+                      color: const Color(0xFFFF6B95),
                     ),
-                    // 缺 Token 时直接给一个「补 Token」按钮，不用绕到菜单
-                    if (isTokenIssue) ...[
-                      const SizedBox(height: 8),
-                      InkWell(
-                        onTap: () => AddServerDialog.show(context, store, initial: server),
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFE4EC),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: const Color(0x55FF6B95), width: 0.6),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.vpn_key_rounded, size: 14, color: Color(0xFFFF6B95)),
-                              SizedBox(width: 4),
-                              Text(
-                                '补 Token',
-                                style: TextStyle(
-                                  color: Color(0xFFFF6B95),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        server.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A)),
+                      ),
+                    ),
+                    StatusBadge(agent: agent),
+                  ],
+                ),
+          const SizedBox(height: 10),
+          if (agent == null) ...[
+            Builder(builder: (ctx) {
+              final err = store.errorFor(server);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.cloud_off_rounded, size: 14, color: Color(0xFFE53935)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          err ?? '暂无数据（首次拉取中）',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: err != null ? const Color(0xFFE53935) : const Color(0xFF9CA3AF),
+                            fontSize: 11,
+                            fontFamily: err != null ? 'monospace' : null,
                           ),
                         ),
                       ),
+                      _RefreshBtn(onTap: () => store.pollServer(server)),
                     ],
-                  ],
-                );
-              }),
-            ] else if (hw == null) ...[
-              const Text('暂无硬件数据', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
-            ] else ...[
-              Row(
-                children: [
-                  Expanded(child: UsageBar(
-                    label: 'CPU',
-                    valueText: '${cpu?.percent.toStringAsFixed(1) ?? "0"}%',
-                    percent: cpu?.percent ?? 0,
-                    icon: Icons.memory_rounded,
-                  )),
-                  const SizedBox(width: 12),
-                  Expanded(child: UsageBar(
-                    label: '内存',
-                    valueText: mem == null ? '—' : '${mem.percent.toStringAsFixed(0)}%',
-                    percent: mem?.percent ?? 0,
-                    icon: Icons.storage_rounded,
-                  )),
+                  ),
                 ],
-              ),
-              const SizedBox(height: 4),
-              Wrap(
-                spacing: 12,
-                runSpacing: 4,
-                children: [
-                  _MiniStat(icon: Icons.thermostat_rounded, label: '温度', value: temp > 0 ? '${temp.toStringAsFixed(0)}°C' : '—', color: tempColor(temp)),
-                  if (gpu != null && gpu.hasUtil)
-                    _MiniStat(icon: Icons.developer_board_rounded, label: 'GPU', value: '${gpu.percent!.toStringAsFixed(0)}%', color: usageColor(gpu.percent!)),
-                  if (gpu != null && gpu.hasTemp)
-                    _MiniStat(icon: Icons.thermostat_rounded, label: '显卡', value: '${gpu.tempC!.toStringAsFixed(0)}°C', color: tempColor(gpu.tempC!)),
-                  if (disks.isNotEmpty)
-                    _MiniStat(icon: Icons.save_rounded, label: '磁盘', value: '${disks.first.percent.toStringAsFixed(0)}%', color: usageColor(disks.first.percent)),
-                  if (agent.hasXui)
-                    _MiniStat(icon: Icons.people_alt_rounded, label: '客户端', value: '${agent.xui!.onlineCount}/${agent.xui!.totalClients}', color: const Color(0xFFFF6B95)),
-                ],
-              ),
-            ],
-            const SizedBox(height: 6),
-            // 操作提示：长按卡片出菜单，点「≡」拖动排序
+              );
+            }),
+          ] else if (hw == null) ...[
+            const Text('暂无硬件数据', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
+          ] else ...[
             Row(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.touch_app_rounded, size: 11, color: Color(0x55000000)),
-                const SizedBox(width: 3),
-                const Text('长按卡片 = 菜单',
-                    style: TextStyle(fontSize: 10, color: Color(0x55000000))),
-                const SizedBox(width: 10),
-                const Icon(Icons.drag_indicator_rounded, size: 12, color: Color(0x55000000)),
-                const SizedBox(width: 3),
-                const Text('拖手柄 = 排序',
-                    style: TextStyle(fontSize: 10, color: Color(0x55000000))),
+                Expanded(child: UsageBar(
+                  label: 'CPU',
+                  valueText: '${cpu?.percent.toStringAsFixed(1) ?? "0"}%',
+                  percent: cpu?.percent ?? 0,
+                  icon: Icons.memory_rounded,
+                )),
+                const SizedBox(width: 12),
+                Expanded(child: UsageBar(
+                  label: '内存',
+                  valueText: mem == null ? '—' : '${mem.percent.toStringAsFixed(0)}%',
+                  percent: mem?.percent ?? 0,
+                  icon: Icons.storage_rounded,
+                )),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 12,
+              runSpacing: 4,
+              children: [
+                _MiniStat(icon: Icons.thermostat_rounded, label: '温度', value: temp > 0 ? '${temp.toStringAsFixed(0)}°C' : '—', color: tempColor(temp)),
+                if (gpu != null && gpu.hasUtil)
+                  _MiniStat(icon: Icons.developer_board_rounded, label: 'GPU', value: '${gpu.percent!.toStringAsFixed(0)}%', color: usageColor(gpu.percent!)),
+                if (gpu != null && gpu.hasTemp)
+                  _MiniStat(icon: Icons.thermostat_rounded, label: '显卡', value: '${gpu.tempC!.toStringAsFixed(0)}°C', color: tempColor(gpu.tempC!)),
+                if (disks.isNotEmpty)
+                  _MiniStat(icon: Icons.save_rounded, label: '磁盘', value: '${disks.first.percent.toStringAsFixed(0)}%', color: usageColor(disks.first.percent)),
+                if (agent.hasXui)
+                  _MiniStat(icon: Icons.people_alt_rounded, label: '客户端', value: '${agent.xui!.onlineCount}/${agent.xui!.totalClients}', color: const Color(0xFFFF6B95)),
               ],
             ),
           ],
+              ],
+            ),
+          ),
         ),
-      ),
+        // 拖动手柄：长按这个才能拖动排序
+        ReorderableDragStartListener(
+          index: index,
+          child: Container(
+            width: 36,
+            margin: const EdgeInsets.only(left: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF7F7FA),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE5E5EA), width: 0.6),
+            ),
+            child: const Center(
+              child: Icon(Icons.drag_indicator_rounded, size: 22, color: Color(0xFFB5B5BD)),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -508,7 +430,7 @@ class _ErrorView extends StatelessWidget {
           children: [
             const Icon(Icons.error_outline_rounded, color: Color(0xFFE53935), size: 56),
             const SizedBox(height: 12),
-            const Text('无法连接 agent', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A))),
+            const Text('连不上后端', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A))),
             const SizedBox(height: 8),
             Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF7A7A82), fontSize: 12)),
             const SizedBox(height: 16),

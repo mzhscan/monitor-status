@@ -49,7 +49,7 @@ class _AddServerDialogState extends State<AddServerDialog> {
   late final _nameCtrl = TextEditingController(text: widget.initial?.name ?? '');
   late final _hostCtrl = TextEditingController(text: widget.initial?.host ?? '');
   late final _portCtrl = TextEditingController(
-      text: widget.initial != null ? widget.initial!.port.toString() : '');
+      text: (widget.initial?.port ?? 9001).toString());
   late final _tokenCtrl = TextEditingController(
       text: widget.store.tokenFor(widget.initial?.id ?? '') ?? '');
   late bool _https = widget.initial?.https ?? true;
@@ -59,6 +59,13 @@ class _AddServerDialogState extends State<AddServerDialog> {
   bool _testOk = false;
 
   bool get _isEdit => widget.initial != null;
+
+  @override
+  void initState() {
+    super.initState();
+    // 编辑模式下不预填 token（用户得主动重输，密码字段）
+    if (_isEdit) _tokenCtrl.text = '';
+  }
 
   @override
   void dispose() {
@@ -289,7 +296,7 @@ class _AddServerDialogState extends State<AddServerDialog> {
                           _label('端口'),
                           _input(
                             controller: _portCtrl,
-                            hint: 'port',
+                            hint: '9001',
                             icon: Icons.numbers_rounded,
                             keyboardType: TextInputType.number,
                             validator: (v) {
