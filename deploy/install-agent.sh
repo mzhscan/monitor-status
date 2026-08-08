@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
 # 星黎监控 agent 一键部署脚本（中文 interactive + flag 覆盖）
 #
-# Usage:
+# 一行命令（最新版）：
 #   curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-agent.sh | \
-#     sudo bash -s -- --version v2.0.0
+#     sudo bash -s -- --version 最新版本号
+# 例（v2.2.0）：
+#   curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-agent.sh | \
+#     sudo bash -s -- --version v2.2.0
+#
+# 墙内 / server 访问不到 github.com 时：
+#   1) 在能翻墙的机器上下载 agent-linux-amd64（或 arm64）
+#   2) scp 过去：scp agent-linux-amd64 root@server:/tmp/agent
+#   3) 加 --binary 跳过 GitHub 下载：
+#      sudo bash install-agent.sh --version v2.2.0 --binary /tmp/agent
 #
 # Optional flags (覆盖 interactive 输入):
 #   --version VER    GitHub release 版本 (e.g. v2.0.0)
