@@ -34,6 +34,7 @@ class OverviewPage extends StatelessWidget {
       // 换成普通 ReorderableListView。其它逻辑 / 卡片结构 / 长按=菜单 / 拖手柄在右
       // 全部保持 v2.2.0 原样。
       child: ReorderableListView(
+        shrinkWrap: true,  // 按内容尺寸，不撑满父级；卡片下方不出现空白可滚区
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
         buildDefaultDragHandles: false,
         onReorder: (oldIndex, newIndex) {
