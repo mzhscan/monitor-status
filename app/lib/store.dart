@@ -90,6 +90,23 @@ class MonitorStore extends ChangeNotifier {
   /// Get the latest data for a specific server (UI helper).
   AgentData? agentFor(MonitorServer s) => _perServer[s.id]?.data;
 
+  /// Last error message for a specific server (UI helper).
+  String? errorFor(MonitorServer s) => _perServer[s.id]?.lastError;
+
+  /// When did the last successful poll happen for this server?
+  DateTime? lastSuccessFor(MonitorServer s) {
+    final ms = _perServer[s.id]?.lastSuccessMs ?? 0;
+    return ms == 0 ? null : DateTime.fromMillisecondsSinceEpoch(ms);
+  }
+
+  /// Manually trigger a single poll for a specific server (UI refresh button).
+  Future<void> pollServer(MonitorServer s) async {
+    final p = _perServer[s.id];
+    if (p == null) return;
+    await p.pollOnce();
+    notifyListeners();
+  }
+
   /// When did the store last complete a successful poll of all servers?
   DateTime? get lastSuccessAt {
     int maxMs = 0;
@@ -212,6 +229,17 @@ class MonitorStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Retry every server. Useful for the "重试全部" button on the overview
+  /// error view.
+  Future<void> retryAll() async {
+    _error = null;
+    notifyListeners();
+    for (final p in _perServer.values) {
+      p.lastError = null;
+    }
+    await _tickAll();
+  }
+
   Future<void> _tickAll() async {
     if (_isLoading) return;
     _isLoading = true;
@@ -221,7 +249,12 @@ class MonitorStore extends ChangeNotifier {
         futs.add(p.pollOnce());
       }
       await Future.wait(futs, eagerError: false);
-      _error = null;
+      // Aggregate any per-server errors so the UI can show them.
+      final errs = <String>[];
+      for (final p in _perServer.values) {
+        if (p.lastError != null) errs.add('${p.server.name}: ${p.lastError}');
+      }
+      _error = errs.isEmpty ? null : errs.join('\n');
     } catch (e) {
       _error = e.toString();
     } finally {

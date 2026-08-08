@@ -15,7 +15,7 @@ class OverviewPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (store.error != null && store.data.isEmpty) {
-      return _ErrorView(message: store.error!, onRetry: () => store.start());
+      return _ErrorView(message: store.error!, onRetry: () => store.retryAll());
     }
     if (store.servers.isEmpty) {
       return _EmptyView(store: store);
@@ -162,7 +162,33 @@ class _ServerCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           if (agent == null) ...[
-            const Text('暂无数据', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
+            Builder(builder: (ctx) {
+              final err = store.errorFor(server);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.cloud_off_rounded, size: 14, color: Color(0xFFE53935)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          err ?? '暂无数据（首次拉取中）',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: err != null ? const Color(0xFFE53935) : const Color(0xFF9CA3AF),
+                            fontSize: 11,
+                            fontFamily: err != null ? 'monospace' : null,
+                          ),
+                        ),
+                      ),
+                      _RefreshBtn(onTap: () => store.pollServer(server)),
+                    ],
+                  ),
+                ],
+              );
+            }),
           ] else if (hw == null) ...[
             const Text('暂无硬件数据', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
           ] else ...[
@@ -364,6 +390,33 @@ class _ErrorView extends StatelessWidget {
             Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF7A7A82), fontSize: 12)),
             const SizedBox(height: 16),
             FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh_rounded), label: const Text('重试')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RefreshBtn extends StatelessWidget {
+  final VoidCallback onTap;
+  const _RefreshBtn({required this.onTap});
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFE4EC),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.refresh_rounded, size: 13, color: Color(0xFFFF6B95)),
+            SizedBox(width: 4),
+            Text('重试', style: TextStyle(color: Color(0xFFFF6B95), fontSize: 11, fontWeight: FontWeight.w600)),
           ],
         ),
       ),
