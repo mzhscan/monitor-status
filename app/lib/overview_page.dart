@@ -30,10 +30,10 @@ class OverviewPage extends StatelessWidget {
       color: const Color(0xFFFF6B95),
       backgroundColor: Colors.white,
       onRefresh: () async => Future.delayed(const Duration(milliseconds: 500)),
-      // 覆盖 canvasColor 为透明，让 ReorderableListView 内部的 Material
-      // 不要再画一层灰底，body 的渐变能完整露出来。
-      child: Theme(
-        data: Theme.of(context).copyWith(canvasColor: Colors.transparent),
+      // 用 Material(type: transparency) 显式声明这里不画底色，
+      // 让 Stack 底层的渐变在卡片之间的空隙也能透出来。
+      child: Material(
+        type: MaterialType.transparency,
         child: ReorderableListView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
         buildDefaultDragHandles: false,
@@ -167,8 +167,10 @@ class _ServerCard extends StatelessWidget {
     final temp = cpu?.tempC ?? 0;
     final isVps = agent?.isVps ?? false;
 
-    return ReorderableDelayedDragStartListener(
-      index: index,
+    // 长按卡片 → 打开菜单（含编辑/删除/补 Token）
+    // 拖动 → 改用卡片右侧的拖拽手柄 Icons.drag_indicator
+    return GestureDetector(
+      onLongPress: () => _showServerMenu(context),
       child: GlassCard(
         onTap: () => store.selectServer(server),
         child: Column(
@@ -200,6 +202,20 @@ class _ServerCard extends StatelessWidget {
                   visualDensity: VisualDensity.compact,
                   tooltip: '更多',
                   onPressed: () => _showServerMenu(context),
+                ),
+                // 拖拽手柄：长按这个图标才进入拖动排序模式
+                ReorderableDragStartListener(
+                  index: index,
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.drag_indicator_rounded,
+                      size: 20,
+                      color: Color(0xFFB5B5BD),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -307,14 +323,19 @@ class _ServerCard extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 6),
-            // 拖动提示（淡淡的灰色小字，告诉用户能拖）
+            // 操作提示：长按卡片出菜单，点「≡」拖动排序
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.drag_indicator_rounded, size: 12, color: Color(0x33000000)),
-                const SizedBox(width: 4),
-                Text('长按拖动排序',
-                    style: const TextStyle(fontSize: 10, color: Color(0x55000000))),
+                const Icon(Icons.touch_app_rounded, size: 11, color: Color(0x55000000)),
+                const SizedBox(width: 3),
+                const Text('长按卡片 = 菜单',
+                    style: TextStyle(fontSize: 10, color: Color(0x55000000))),
+                const SizedBox(width: 10),
+                const Icon(Icons.drag_indicator_rounded, size: 12, color: Color(0x55000000)),
+                const SizedBox(width: 3),
+                const Text('拖手柄 = 排序',
+                    style: TextStyle(fontSize: 10, color: Color(0x55000000))),
               ],
             ),
           ],

@@ -177,23 +177,31 @@ class HomePage extends StatelessWidget {
                 ),
             ],
           ),
-          body: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFFFFFFFF), // pure white
-                  Color(0xFFFFE4EC), // soft sakura
-                  Color(0xFFFFF0F5), // pale blush
-                  Color(0xFFFFFFFF), // back to white
-                ],
-                stops: [0.0, 0.35, 0.7, 1.0],
+          body: Stack(
+            children: [
+              // 渐变铺在最底层，Positioned.fill 强制占满整个 Stack
+              // （之前用 Container+decoration 在某些情况下会被 ReorderableListView 盖住）
+              const Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFFFFFFFF), // pure white
+                        Color(0xFFFFE4EC), // soft sakura
+                        Color(0xFFFFF0F5), // pale blush
+                        Color(0xFFFFFFFF), // back to white
+                      ],
+                      stops: [0.0, 0.35, 0.7, 1.0],
+                    ),
+                  ),
+                ),
               ),
-            ),
-            child: SafeArea(
-              child: _bodyFor(store),
-            ),
+              SafeArea(
+                child: _bodyFor(store),
+              ),
+            ],
           ),
         );
       },
