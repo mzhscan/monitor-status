@@ -15,12 +15,15 @@ import 'trusted_certs.dart';
 /// can't await SharedPreferences inside it.
 class _TrustedCertCache {
   static Map<String, String> _map = {};
+  static bool _loaded = false;
 
   static Future<void> refresh() async {
     _map = await TrustedCerts.all();
+    _loaded = true;
   }
 
   static bool isTrusted(String url, X509Certificate cert) {
+    if (!_loaded) return false; // wait for refresh() to populate
     final fp = TrustedCerts.fingerprint(cert);
     final stored = _map[url];
     return stored != null && stored == fp;
@@ -33,7 +36,11 @@ class AgentClient {
   final http.Client _client;
 
   AgentClient({required this.url, required this.token})
-      : _client = _buildClient(url);
+      : _client = _buildClient(url) {
+    // Pre-load the in-memory trust cache so the very first poll can
+    // consult it (badCertificateCallback is sync).
+    unawaited(_TrustedCertCache.refresh());
+  }
 
   static http.Client _buildClient(String url) {
     final uri = Uri.parse(url);

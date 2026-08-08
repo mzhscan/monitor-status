@@ -54,12 +54,17 @@ class TrustedCerts {
     final m = await _load();
     m[url] = fingerprint;
     await _save(m);
+    // Refresh any in-memory cache used by badCertificateCallback so the
+    // trust takes effect on the very next poll (without waiting for an
+    // app restart).
+    await _TrustedCertCache.refresh();
   }
 
   static Future<void> untrust(String url) async {
     final m = await _load();
     m.remove(url);
     await _save(m);
+    await _TrustedCertCache.refresh();
   }
 
   static Future<Map<String, String>> all() => _load();
