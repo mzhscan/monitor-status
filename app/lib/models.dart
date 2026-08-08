@@ -627,26 +627,66 @@ class AgentData {
     required this.services,
   });
 
-  /// Used by legacy code paths that still talk about AgentData.
-  /// We accept the new snapshot shape: { data: { ...ServerData... }, last_update, seconds_ago }.
+  /// Parse the v2.0.0 agent's direct response.
+  ///
+  /// v2.0.0 agent (no backend) returns:
+  ///   {
+  ///     "agent_name": "VPS",
+  ///     "timestamp": 1786207283,      // unix seconds
+  ///     "hardware": {...},            // already Hardware.fromJson shape
+  ///     "xui": {...},                 // already XuiInfo.fromJson shape (or absent)
+  ///     "services": [{"name", "status"}, ...]  // or absent
+  ///   }
+  ///
+  /// For backward compat we also accept the legacy v1.0.x backend shape:
+  ///   { "data": {...}, "last_update": ..., "seconds_ago": ... }
   factory AgentData.fromJson(Map<String, dynamic> j) {
-    final data = (j['data'] as Map<String, dynamic>?) ?? const {};
-    final sd = ServerData.fromJson(data);
-    // Fallback: if kind wasn't set but xui is populated, treat as vps.
-    final kind = (sd.kind.isNotEmpty && sd.kind != 'nas') || sd.hasXui
-        ? (sd.kind == 'nas' && sd.hasXui ? 'vps' : sd.kind)
-        : sd.kind;
+    // Detect legacy backend shape: has "data" wrapper.
+    final isLegacy = j.containsKey('data') && j['data'] is Map;
+    if (isLegacy) {
+      final data = j['data'] as Map<String, dynamic>;
+      final sd = ServerData.fromJson(data);
+      final kind = (sd.kind.isNotEmpty && sd.kind != 'nas') || sd.hasXui
+          ? (sd.kind == 'nas' && sd.hasXui ? 'vps' : sd.kind)
+          : sd.kind;
+      return AgentData(
+        name: sd.name.isNotEmpty ? sd.name : _s(data['agent_name']),
+        id: sd.id,
+        kind: kind,
+        source: sd.source,
+        timestamp: _i(j['last_update']),
+        secondsAgo: _i(j['seconds_ago']),
+        online: sd.online,
+        hardware: sd.hardware,
+        xui: sd.xui,
+        services: sd.services,
+      );
+    }
+
+    // v2.0.0 agent direct shape: flat response.
+    final tsSec = _i(j['timestamp']);
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final secondsAgo = tsSec > 0
+        ? ((nowMs / 1000 - tsSec).round())
+        : 0;
+    final hasXui = j['xui'] is Map;
     return AgentData(
-      name: sd.name.isNotEmpty ? sd.name : _s(data['agent_name']),
-      id: sd.id,
-      kind: kind,
-      source: sd.source,
-      timestamp: _i(j['last_update']),
-      secondsAgo: _i(j['seconds_ago']),
-      online: sd.online,
-      hardware: sd.hardware,
-      xui: sd.xui,
-      services: sd.services,
+      name: _s(j['agent_name']),
+      id: '',
+      kind: hasXui ? 'vps' : 'nas',
+      source: 'agent',
+      timestamp: tsSec,
+      secondsAgo: secondsAgo,
+      online: true,
+      hardware: j['hardware'] is Map
+          ? Hardware.fromJson(j['hardware'] as Map<String, dynamic>)
+          : null,
+      xui: j['xui'] is Map
+          ? XuiInfo.fromJson(j['xui'] as Map<String, dynamic>)
+          : null,
+      services: ((j['services'] as List?) ?? const [])
+          .map((e) => ServiceEntry.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 
