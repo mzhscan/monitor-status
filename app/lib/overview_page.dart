@@ -445,7 +445,7 @@ class _ErrorView extends StatelessWidget {
           children: [
             const Icon(Icons.error_outline_rounded, color: Color(0xFFE53935), size: 56),
             const SizedBox(height: 12),
-            const Text('连不上后端', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A))),
+            const Text('无法连接 agent', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A))),
             const SizedBox(height: 8),
             Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF7A7A82), fontSize: 12)),
             const SizedBox(height: 16),

@@ -61,13 +61,6 @@ class _AddServerDialogState extends State<AddServerDialog> {
   bool get _isEdit => widget.initial != null;
 
   @override
-  void initState() {
-    super.initState();
-    // 编辑模式下不预填 token（用户得主动重输，密码字段）
-    if (_isEdit) _tokenCtrl.text = '';
-  }
-
-  @override
   void dispose() {
     _nameCtrl.dispose();
     _hostCtrl.dispose();
