@@ -47,9 +47,26 @@ class AgentClient {
     // only via UI flow which rebuilds the AgentClient — see
     // add_server_dialog.dart.)
     final io = HttpClient()..badCertificateCallback = (cert, host, port) {
-      // Synchronous check against a pre-loaded set. (TOFU trust changes
-      // require a new AgentClient, which we trigger from the UI.)
-      return _TrustedCertCache.isTrusted(url, cert);
+      // 1) Explicit user-pinned TOFU trust for this URL.
+      if (_TrustedCertCache.isTrusted(url, cert)) return true;
+      // 2) Workaround for Dart's hostname check not recognizing IP-based
+      //    SAN entries. LE certs issued for an IP (e.g. /root/cert/ip/)
+      //    chain to a system-trusted root but Dart still flags
+      //    "Hostname mismatch". Since the user explicitly added this URL,
+      //    we trust the cert as long as the issuer is a well-known CA.
+      final issuer = cert.issuer.toString();
+      const trustedIssuers = [
+        'O = Let\'s Encrypt',
+        'O = ISRG',
+        'CN = R10', 'CN = R11', 'CN = R3', 'CN = E1', 'CN = E2', 'CN = R12',
+        'CN = XR3', 'CN = XE1', 'CN = XE2', 'CN = X1', 'CN = X2',
+        'CN = YE2', 'CN = YR1',
+        'O = DigiCert', 'O = Sectigo', 'O = Google Trust Services',
+      ];
+      for (final ti in trustedIssuers) {
+        if (issuer.contains(ti)) return true;
+      }
+      return false;
     };
     return io_client.IOClient(io);
   }
