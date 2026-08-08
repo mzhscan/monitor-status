@@ -30,70 +30,46 @@ class OverviewPage extends StatelessWidget {
       color: const Color(0xFFFF6B95),
       backgroundColor: Colors.white,
       onRefresh: () async => Future.delayed(const Duration(milliseconds: 500)),
-      child: CustomScrollView(
-        slivers: [
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-            sliver: SliverToBoxAdapter(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: ReorderableListView(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+        buildDefaultDragHandles: false,
+        onReorder: (oldIndex, newIndex) {
+          store.reorderServers(oldIndex, newIndex);
+        },
+        children: [
+          if (store.error != null)
+            Container(
+              key: const ValueKey('error-banner'),
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0x1AE53935),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0x55E53935)),
+              ),
+              child: Row(
                 children: [
-                  if (store.error != null)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: const Color(0x1AE53935),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0x55E53935)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.warning_amber_rounded, color: Color(0xFFE53935), size: 18),
-                          const SizedBox(width: 8),
-                          Expanded(child: Text('拉取失败：${store.error}', style: const TextStyle(color: Color(0xFF8B1A1A), fontSize: 12))),
-                        ],
-                      ),
-                    ),
+                  const Icon(Icons.warning_amber_rounded, color: Color(0xFFE53935), size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text('拉取失败：${store.error}', style: const TextStyle(color: Color(0xFF8B1A1A), fontSize: 12))),
                 ],
               ),
             ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
-            sliver: SliverReorderableList(
-              itemCount: store.orderedServers.length,
-              onReorder: (oldIndex, newIndex) {
-                store.reorderServers(oldIndex, newIndex);
-              },
-              itemBuilder: (ctx, i) {
-                final s = store.orderedServers[i];
-                return Padding(
-                  key: ValueKey(s.id),
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _ServerCard(server: s, store: store, index: i),
-                );
-              },
+          for (int i = 0; i < store.orderedServers.length; i++)
+            Padding(
+              key: ValueKey(store.orderedServers[i].id),
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _ServerCard(server: store.orderedServers[i], store: store, index: i),
             ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
-            sliver: SliverToBoxAdapter(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SizedBox(height: 8),
-                  if (store.lastSuccessAt != null)
-                    Center(
-                      child: Text(
-                        '更新于 ${_fmtTime(store.lastSuccessAt!)}',
-                        style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11),
-                      ),
-                    ),
-                ],
+          const SizedBox(height: 8),
+          if (store.lastSuccessAt != null)
+            Center(
+              key: const ValueKey('last-success'),
+              child: Text(
+                '更新于 ${_fmtTime(store.lastSuccessAt!)}',
+                style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -168,122 +144,122 @@ class _ServerCard extends StatelessWidget {
     final temp = cpu?.tempC ?? 0;
     final isVps = agent?.isVps ?? false;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          child: GlassCard(
-            onTap: () => store.selectServer(server),
-            onLongPress: () => _showServerMenu(context),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      isVps ? Icons.public_rounded : Icons.dns_rounded,
-                      size: 20,
-                      color: const Color(0xFFFF6B95),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        server.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A)),
-                      ),
-                    ),
-                    StatusBadge(agent: agent),
-                  ],
-                ),
-          const SizedBox(height: 10),
-          if (agent == null) ...[
-            Builder(builder: (ctx) {
-              final err = store.errorFor(server);
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.cloud_off_rounded, size: 14, color: Color(0xFFE53935)),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          err ?? '暂无数据（首次拉取中）',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: err != null ? const Color(0xFFE53935) : const Color(0xFF9CA3AF),
-                            fontSize: 11,
-                            fontFamily: err != null ? 'monospace' : null,
-                          ),
-                        ),
-                      ),
-                      _RefreshBtn(onTap: () => store.pollServer(server)),
-                    ],
-                  ),
-                ],
-              );
-            }),
-          ] else if (hw == null) ...[
-            const Text('暂无硬件数据', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
-          ] else ...[
+    return ReorderableDelayedDragStartListener(
+      index: index,
+      child: GlassCard(
+        onTap: () => store.selectServer(server),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Row(
               children: [
-                Expanded(child: UsageBar(
-                  label: 'CPU',
-                  valueText: '${cpu?.percent.toStringAsFixed(1) ?? "0"}%',
-                  percent: cpu?.percent ?? 0,
-                  icon: Icons.memory_rounded,
-                )),
-                const SizedBox(width: 12),
-                Expanded(child: UsageBar(
-                  label: '内存',
-                  valueText: mem == null ? '—' : '${mem.percent.toStringAsFixed(0)}%',
-                  percent: mem?.percent ?? 0,
-                  icon: Icons.storage_rounded,
-                )),
+                Icon(
+                  isVps ? Icons.public_rounded : Icons.dns_rounded,
+                  size: 20,
+                  color: const Color(0xFFFF6B95),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    server.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A)),
+                  ),
+                ),
+                StatusBadge(agent: agent),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: const Icon(Icons.more_horiz_rounded, size: 20),
+                  color: const Color(0xFF7A7A82),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                  visualDensity: VisualDensity.compact,
+                  tooltip: '更多',
+                  onPressed: () => _showServerMenu(context),
+                ),
               ],
             ),
-            const SizedBox(height: 4),
-            Wrap(
-              spacing: 12,
-              runSpacing: 4,
+            const SizedBox(height: 10),
+            if (agent == null) ...[
+              Builder(builder: (ctx) {
+                final err = store.errorFor(server);
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.cloud_off_rounded, size: 14, color: Color(0xFFE53935)),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            err ?? '暂无数据（首次拉取中）',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: err != null ? const Color(0xFFE53935) : const Color(0xFF9CA3AF),
+                              fontSize: 11,
+                              fontFamily: err != null ? 'monospace' : null,
+                            ),
+                          ),
+                        ),
+                        _RefreshBtn(onTap: () => store.pollServer(server)),
+                      ],
+                    ),
+                  ],
+                );
+              }),
+            ] else if (hw == null) ...[
+              const Text('暂无硬件数据', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
+            ] else ...[
+              Row(
+                children: [
+                  Expanded(child: UsageBar(
+                    label: 'CPU',
+                    valueText: '${cpu?.percent.toStringAsFixed(1) ?? "0"}%',
+                    percent: cpu?.percent ?? 0,
+                    icon: Icons.memory_rounded,
+                  )),
+                  const SizedBox(width: 12),
+                  Expanded(child: UsageBar(
+                    label: '内存',
+                    valueText: mem == null ? '—' : '${mem.percent.toStringAsFixed(0)}%',
+                    percent: mem?.percent ?? 0,
+                    icon: Icons.storage_rounded,
+                  )),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 12,
+                runSpacing: 4,
+                children: [
+                  _MiniStat(icon: Icons.thermostat_rounded, label: '温度', value: temp > 0 ? '${temp.toStringAsFixed(0)}°C' : '—', color: tempColor(temp)),
+                  if (gpu != null && gpu.hasUtil)
+                    _MiniStat(icon: Icons.developer_board_rounded, label: 'GPU', value: '${gpu.percent!.toStringAsFixed(0)}%', color: usageColor(gpu.percent!)),
+                  if (gpu != null && gpu.hasTemp)
+                    _MiniStat(icon: Icons.thermostat_rounded, label: '显卡', value: '${gpu.tempC!.toStringAsFixed(0)}°C', color: tempColor(gpu.tempC!)),
+                  if (disks.isNotEmpty)
+                    _MiniStat(icon: Icons.save_rounded, label: '磁盘', value: '${disks.first.percent.toStringAsFixed(0)}%', color: usageColor(disks.first.percent)),
+                  if (agent.hasXui)
+                    _MiniStat(icon: Icons.people_alt_rounded, label: '客户端', value: '${agent.xui!.onlineCount}/${agent.xui!.totalClients}', color: const Color(0xFFFF6B95)),
+                ],
+              ),
+            ],
+            const SizedBox(height: 6),
+            // 拖动提示（淡淡的灰色小字，告诉用户能拖）
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _MiniStat(icon: Icons.thermostat_rounded, label: '温度', value: temp > 0 ? '${temp.toStringAsFixed(0)}°C' : '—', color: tempColor(temp)),
-                if (gpu != null && gpu.hasUtil)
-                  _MiniStat(icon: Icons.developer_board_rounded, label: 'GPU', value: '${gpu.percent!.toStringAsFixed(0)}%', color: usageColor(gpu.percent!)),
-                if (gpu != null && gpu.hasTemp)
-                  _MiniStat(icon: Icons.thermostat_rounded, label: '显卡', value: '${gpu.tempC!.toStringAsFixed(0)}°C', color: tempColor(gpu.tempC!)),
-                if (disks.isNotEmpty)
-                  _MiniStat(icon: Icons.save_rounded, label: '磁盘', value: '${disks.first.percent.toStringAsFixed(0)}%', color: usageColor(disks.first.percent)),
-                if (agent.hasXui)
-                  _MiniStat(icon: Icons.people_alt_rounded, label: '客户端', value: '${agent.xui!.onlineCount}/${agent.xui!.totalClients}', color: const Color(0xFFFF6B95)),
+                Icon(Icons.drag_indicator_rounded, size: 12, color: Color(0x33000000)),
+                const SizedBox(width: 4),
+                Text('长按拖动排序',
+                    style: const TextStyle(fontSize: 10, color: Color(0x55000000))),
               ],
             ),
           ],
-              ],
-            ),
-          ),
         ),
-        // 拖动手柄：长按这个才能拖动排序
-        ReorderableDragStartListener(
-          index: index,
-          child: Container(
-            width: 36,
-            margin: const EdgeInsets.only(left: 4),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF7F7FA),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE5E5EA), width: 0.6),
-            ),
-            child: const Center(
-              child: Icon(Icons.drag_indicator_rounded, size: 22, color: Color(0xFFB5B5BD)),
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 
