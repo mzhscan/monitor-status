@@ -214,7 +214,7 @@ class _AddServerDialogState extends State<AddServerDialog> {
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: 0xFFE5E5EA, width: 0.6),
+        side: const BorderSide(color: Color(0xFFE5E5EA), width: 0.6),
       ),
       titlePadding: const EdgeInsets.fromLTRB(20, 16, 12, 0),
       contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
