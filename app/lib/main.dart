@@ -177,13 +177,23 @@ class HomePage extends StatelessWidget {
                 ),
             ],
           ),
-          body: Stack(
-            children: [
-              const _GradientBackdrop(),
-              SafeArea(
-                child: _bodyFor(store),
+          body: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFFFFFFFF), // pure white
+                  Color(0xFFFFE4EC), // soft sakura
+                  Color(0xFFFFF0F5), // pale blush
+                  Color(0xFFFFFFFF), // back to white
+                ],
+                stops: [0.0, 0.35, 0.7, 1.0],
               ),
-            ],
+            ),
+            child: SafeArea(
+              child: _bodyFor(store),
+            ),
           ),
         );
       },

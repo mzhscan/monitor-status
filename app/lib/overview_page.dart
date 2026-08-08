@@ -33,6 +33,24 @@ class OverviewPage extends StatelessWidget {
       child: ReorderableListView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
         buildDefaultDragHandles: false,
+        // 拖动中的卡片：保持白底 + 浮起来的粉色阴影，跟静态卡片视觉一致
+        proxyDecorator: (child, index, animation) => Material(
+          elevation: 0,
+          color: Colors.transparent,
+          child: Transform.scale(
+            scale: 1.02,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: const [
+                  BoxShadow(color: Color(0x33FF6B95), blurRadius: 24, offset: Offset(0, 8)),
+                  BoxShadow(color: Color(0x1A000000), blurRadius: 16, offset: Offset(0, 4)),
+                ],
+              ),
+              child: child,
+            ),
+          ),
+        ),
         onReorder: (oldIndex, newIndex) {
           store.reorderServers(oldIndex, newIndex);
         },
