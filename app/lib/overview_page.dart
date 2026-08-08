@@ -30,7 +30,11 @@ class OverviewPage extends StatelessWidget {
       color: const Color(0xFFFF6B95),
       backgroundColor: Colors.white,
       onRefresh: () async => Future.delayed(const Duration(milliseconds: 500)),
-      child: ReorderableListView(
+      // 覆盖 canvasColor 为透明，让 ReorderableListView 内部的 Material
+      // 不要再画一层灰底，body 的渐变能完整露出来。
+      child: Theme(
+        data: Theme.of(context).copyWith(canvasColor: Colors.transparent),
+        child: ReorderableListView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
         buildDefaultDragHandles: false,
         // 拖动中的卡片：保持白底 + 浮起来的粉色阴影，跟静态卡片视觉一致
@@ -89,6 +93,7 @@ class OverviewPage extends StatelessWidget {
               ),
             ),
         ],
+        ),
       ),
     );
   }
@@ -202,6 +207,12 @@ class _ServerCard extends StatelessWidget {
             if (agent == null) ...[
               Builder(builder: (ctx) {
                 final err = store.errorFor(server);
+                final isTokenIssue = err != null &&
+                    (err.contains('未配置 agent token') ||
+                     err.contains('Token') ||
+                     err.contains('token') ||
+                     err.contains('401') ||
+                     err.contains('403'));
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -224,6 +235,37 @@ class _ServerCard extends StatelessWidget {
                         _RefreshBtn(onTap: () => store.pollServer(server)),
                       ],
                     ),
+                    // 缺 Token 时直接给一个「补 Token」按钮，不用绕到菜单
+                    if (isTokenIssue) ...[
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: () => AddServerDialog.show(context, store, initial: server),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFE4EC),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0x55FF6B95), width: 0.6),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.vpn_key_rounded, size: 14, color: Color(0xFFFF6B95)),
+                              SizedBox(width: 4),
+                              Text(
+                                '补 Token',
+                                style: TextStyle(
+                                  color: Color(0xFFFF6B95),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 );
               }),

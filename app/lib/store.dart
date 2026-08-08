@@ -124,10 +124,8 @@ class MonitorStore extends ChangeNotifier {
     return maxMs == 0 ? null : DateTime.fromMillisecondsSinceEpoch(maxMs);
   }
 
-  /// Per-disk UI config (aliases + hidden). v2.0.0 stores this locally
-  /// on the device (no backend); v1 had it on the backend. v2.0.0
-  /// store keeps the API but the actual persistence is in-memory only
-  /// (lost on app restart). Add local disk-config persistence in v2.1.
+  /// Per-disk UI config (aliases + hidden). Persisted to SharedPreferences
+  /// so the user's customizations survive app restarts.
   Future<void> updateDiskConfig(
     String id, {
     Map<String, String>? aliases,
@@ -144,6 +142,8 @@ class MonitorStore extends ChangeNotifier {
     _servers = _servers.map((x) => x.id == id ? updated : x).toList();
     if (_currentServer?.id == id) _currentServer = updated;
     notifyListeners();
+    // 持久化到本地，下次启动恢复
+    await _saveServers(_servers);
   }
 
   /// Initialize the store: load persisted servers, build clients, start

@@ -49,7 +49,7 @@ class _AddServerDialogState extends State<AddServerDialog> {
   late final _nameCtrl = TextEditingController(text: widget.initial?.name ?? '');
   late final _hostCtrl = TextEditingController(text: widget.initial?.host ?? '');
   late final _portCtrl = TextEditingController(
-      text: (widget.initial?.port ?? 9001).toString());
+      text: widget.initial != null ? widget.initial!.port.toString() : '');
   late final _tokenCtrl = TextEditingController(
       text: widget.store.tokenFor(widget.initial?.id ?? '') ?? '');
   late bool _https = widget.initial?.https ?? true;
@@ -289,7 +289,7 @@ class _AddServerDialogState extends State<AddServerDialog> {
                           _label('端口'),
                           _input(
                             controller: _portCtrl,
-                            hint: '9001',
+                            hint: 'port',
                             icon: Icons.numbers_rounded,
                             keyboardType: TextInputType.number,
                             validator: (v) {
