@@ -12,6 +12,7 @@
 #   --port PORT      监听端口 (默认 9101)
 #   --cert PATH      显式证书路径 (trim 自动 / 3x-ui cert / 自签 都可)
 #   --key PATH       显式私钥路径
+#   --binary PATH    本地已下载的 agent binary（跳过 GitHub 下载，墙内用户用）
 #   --no-tls         不启 HTTPS（不推荐）
 
 set -euo pipefail
@@ -22,6 +23,7 @@ TOKEN=""
 PORT="9101"
 CERT_FILE=""
 KEY_FILE=""
+BINARY_PATH=""
 USE_TLS=1
 
 # ===== 参数解析 =====
@@ -33,8 +35,9 @@ while [[ $# -gt 0 ]]; do
     --port)    PORT="$2"; shift 2 ;;
     --cert)    CERT_FILE="$2"; shift 2 ;;
     --key)     KEY_FILE="$2"; shift 2 ;;
+    --binary)  BINARY_PATH="$2"; shift 2 ;;
     --no-tls)  USE_TLS=0; shift ;;
-    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
     *) echo "未知参数: $1" >&2; exit 1 ;;
   esac
 done
@@ -59,9 +62,33 @@ case "$ARCH" in
 esac
 
 URL="https://github.com/${REPO}/releases/download/${VERSION}/agent-linux-${GOARCH}"
-echo "📥 正在下载 $URL"
-curl -fsSL -o "$TMP/agent" "$URL"
-chmod +x "$TMP/agent"
+
+# ===== 下载 / 取本地 binary =====
+if [[ -n "$BINARY_PATH" ]]; then
+  if [[ ! -f "$BINARY_PATH" ]]; then
+    echo "❌ --binary 指定的文件不存在: $BINARY_PATH" >&2
+    exit 1
+  fi
+  echo "📦 使用本地 binary: $BINARY_PATH"
+  cp "$BINARY_PATH" "$TMP/agent"
+  chmod +x "$TMP/agent"
+else
+  echo "📥 正在下载 $URL"
+  if ! curl -fsSL --connect-timeout 8 -m 60 -o "$TMP/agent" "$URL"; then
+    echo ""
+    echo "❌ 下载失败（服务器可能访问不到 github.com）" >&2
+    echo "" >&2
+    echo "💡 国内/墙内解决方法：在能翻墙的机器上先下载好，再 scp 过来：" >&2
+    echo "   # 在你本地 Mac 执行：" >&2
+    echo "   curl -fsSL -O '$URL'" >&2
+    echo "   scp -P <port> <binary> root@<server>:/tmp/agent" >&2
+    echo "" >&2
+    echo "   # 然后在 server 上重新跑本脚本，加 --binary 参数：" >&2
+    echo "   sudo bash install-agent.sh --version $VERSION --name <name> --token <token> --binary /tmp/agent" >&2
+    exit 1
+  fi
+  chmod +x "$TMP/agent"
+fi
 
 # ===== interactive 输入 =====
 echo ""
