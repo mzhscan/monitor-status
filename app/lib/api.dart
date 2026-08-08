@@ -1,0 +1,105 @@
+// Per-agent HTTP client. No central backend — each server's agent is queried
+// directly over HTTPS (or HTTP) using the token the user configured. Self-
+// signed or untrusted certs are TOFU-pinned by SHA-256 fingerprint.
+
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'package:http/io_client.dart' as io_client;
+import 'package:http/http.dart' as http;
+import 'models.dart';
+import 'trusted_certs.dart';
+
+/// In-memory cache of trusted cert fingerprints, refreshed by [refresh] when
+/// the user trusts/untrusts a cert. `badCertificateCallback` is sync so we
+/// can't await SharedPreferences inside it.
+class _TrustedCertCache {
+  static Map<String, String> _map = {};
+
+  static Future<void> refresh() async {
+    _map = await TrustedCerts.all();
+  }
+
+  static bool isTrusted(String url, X509Certificate cert) {
+    final fp = TrustedCerts.fingerprint(cert);
+    final stored = _map[url];
+    return stored != null && stored == fp;
+  }
+}
+
+class AgentClient {
+  final String url;        // e.g. https://192.168.1.1:9101
+  final String token;      // X-Agent-Token header value
+  final http.Client _client;
+
+  AgentClient({required this.url, required this.token})
+      : _client = _buildClient(url);
+
+  static http.Client _buildClient(String url) {
+    final uri = Uri.parse(url);
+    final isHttps = uri.scheme == 'https';
+    if (!isHttps) {
+      return http.Client();
+    }
+    // For HTTPS: trust the system store + any user-pinned (TOFU) certs.
+    // badCertificateCallback must be sync (returns bool), so we pre-load
+    // the trust set once at construction time. (The trust set changes
+    // only via UI flow which rebuilds the AgentClient — see
+    // add_server_dialog.dart.)
+    final io = HttpClient()..badCertificateCallback = (cert, host, port) {
+      // Synchronous check against a pre-loaded set. (TOFU trust changes
+      // require a new AgentClient, which we trigger from the UI.)
+      return _TrustedCertCache.isTrusted(url, cert);
+    };
+    return io_client.IOClient(io);
+  }
+
+  Map<String, String> get _headers => {
+        'X-Agent-Token': token,
+        'Accept': 'application/json',
+      };
+
+  /// Health probe — just hits /health. Returns the raw response so the
+  /// caller can detect TLS failures and prompt the user to trust the cert.
+  Future<http.Response> health() {
+    return _client
+        .get(Uri.parse('$url/health'), headers: _headers)
+        .timeout(const Duration(seconds: 5));
+  }
+
+  /// Full /api/report. Throws on any non-200 so the store can mark the
+  /// server as offline.
+  Future<AgentData> fetchReport() async {
+    final r = await _client
+        .get(Uri.parse('$url/api/report'), headers: _headers)
+        .timeout(const Duration(seconds: 6));
+    if (r.statusCode != 200) {
+      throw Exception('HTTP ${r.statusCode}');
+    }
+    return AgentData.fromJson(jsonDecode(r.body) as Map<String, dynamic>);
+  }
+
+  /// Test connection: returns a result map suitable for showing in a
+  /// "test" dialog. Never throws — errors are encoded in the result.
+  Future<Map<String, dynamic>> test() async {
+    try {
+      final r = await health();
+      if (r.statusCode == 200) {
+        return {'success': true, 'message': '连接成功', 'detected': 'agent'};
+      }
+      return {'success': false, 'error': 'HTTP ${r.statusCode}'};
+    } on SocketException catch (e) {
+      return {'success': false, 'error': '网络错误：${e.message}'};
+    } on HandshakeException catch (e) {
+      return {
+        'success': false,
+        'error': 'TLS 证书不被信任：${e.message}',
+        'tls_untrusted': true,
+      };
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  void close() => _client.close();
+}

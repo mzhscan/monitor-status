@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- White + sakura pink gradient splash, matches the app's light theme. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="135"
+                android:startColor="#FFFFFF"
+                android:centerColor="#FFE4EC"
+                android:endColor="#FFF0F5"
+                android:type="linear" />
+        </shape>
+    </item>
+</layer-list>

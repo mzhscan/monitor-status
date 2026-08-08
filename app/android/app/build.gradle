@@ -1,0 +1,70 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+// Load keystore credentials from android/key.properties (gitignored).
+// For local dev: keep the file. For CI: write the values to env vars
+// RELEASE_STORE_FILE / RELEASE_STORE_PASSWORD / RELEASE_KEY_ALIAS /
+// RELEASE_KEY_PASSWORD (set in the GitHub Actions workflow).
+def keystoreProps = new Properties()
+def keystoreFile = rootProject.file("key.properties")
+if (keystoreFile.exists()) {
+    keystoreProps.load(new FileInputStream(keystoreFile))
+} else {
+    // Fall back to env vars (used by CI)
+    if (System.getenv("RELEASE_STORE_FILE")) {
+        keystoreProps.setProperty("storeFile", System.getenv("RELEASE_STORE_FILE"))
+        keystoreProps.setProperty("storePassword", System.getenv("RELEASE_STORE_PASSWORD") ?: "")
+        keystoreProps.setProperty("keyAlias", System.getenv("RELEASE_KEY_ALIAS") ?: "")
+        keystoreProps.setProperty("keyPassword", System.getenv("RELEASE_KEY_PASSWORD") ?: "")
+    }
+}
+
+android {
+    namespace = "com.xingli.monitorstatus"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_17
+    }
+
+    defaultConfig {
+        applicationId = "com.xingli.monitorstatus"
+        minSdk = 24
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
+
+    signingConfigs {
+        release {
+            if (keystoreProps.containsKey("storeFile")) {
+                storeFile file(keystoreProps["storeFile"])
+                storePassword keystoreProps["storePassword"]
+                keyAlias keystoreProps["keyAlias"]
+                keyPassword keystoreProps["keyPassword"]
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig = keystoreProps.containsKey("storeFile")
+                ? signingConfigs.release
+                : signingConfigs.debug
+        }
+    }
+}
+
+flutter {
+    source = "../.."
+}

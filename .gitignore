@@ -1,0 +1,54 @@
+# Build artifacts
+app/build/
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/.packages
+app/.pub-cache/
+app/.pub/
+app/pubspec.lock
+app/android/.gradle/
+app/android/app/build/
+app/android/build/
+app/android/local.properties
+app/android/key.properties
+app/android/app/release/
+app/.DS_Store
+app/.idea/
+app/.vscode/
+*.iml
+.idea/
+.vscode/
+
+# Go
+*.test
+*.out
+dist/
+build/
+bin/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets / state
+*.env
+*.env.local
+data/
+logs/
+cert/
+*.pem
+*.key
+
+# Keystore / signing
+keystore/
+**/keystore/
+**/CREDENTIALS.txt
+release.keystore
+*.jks
+*.p12
+*.pfx
+
+# GitHub Actions workflows (push via API due to PAT scope)
+.github/workflows/*
+!.github/workflows/.keep
