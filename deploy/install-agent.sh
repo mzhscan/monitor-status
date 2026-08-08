@@ -99,9 +99,10 @@ echo ""
 
 # ===== TTY 检测 + prompt 工具 =====
 # curl | bash 这种跑法，stdin 被脚本本身占了，read 会读脚本下一行当输入。
-# 这里统一从 /dev/tty 读（如果有），没有就直接报错要求用户用 --flags。
+# 这里统一从 /dev/tty 读写（如果有），没有就直接报错要求用户用 --flags。
 if [[ -e /dev/tty ]]; then
-  exec 3</dev/tty
+  # 用 < 同时开读写（read 也要用这个 fd）
+  exec 3<>/dev/tty
   PROMPT_FD=3
 else
   PROMPT_FD=0
