@@ -80,11 +80,14 @@ class MonitorStore extends ChangeNotifier {
   }
 
   /// Servers in stable display order: user-added agent servers,
-  /// alphabetical. (v1.0.9 had a hardcoded "agent" bubble list — we
-  /// drop that since v2.0.0 has no implicit seed.)
+  /// ordered by sortOrder (then by name as tie-breaker). v2.1+ lets the
+  /// user drag to reorder; the order is persisted via [reorder].
   List<MonitorServer> get orderedServers {
     final out = List<MonitorServer>.from(_servers);
-    out.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    out.sort((a, b) {
+      if (a.sortOrder != b.sortOrder) return a.sortOrder.compareTo(b.sortOrder);
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
     return out;
   }
 
@@ -93,6 +96,10 @@ class MonitorStore extends ChangeNotifier {
 
   /// Last error message for a specific server (UI helper).
   String? errorFor(MonitorServer s) => _perServer[s.id]?.lastError;
+
+  /// Saved token for a server (UI helper, used by Edit dialog to know
+  /// the *length*; the field is then cleared so the user must retype).
+  String? tokenFor(String id) => _tokens[id];
 
   /// When did the last successful poll happen for this server?
   DateTime? lastSuccessFor(MonitorServer s) {
@@ -176,14 +183,18 @@ class MonitorStore extends ChangeNotifier {
     required String url,
     required String token,
   }) async {
+    final uri = Uri.parse(url);
+    final maxOrder = _servers.fold<int>(0, (m, s) => s.sortOrder > m ? s.sortOrder : m);
     final s = MonitorServer(
       id: _genId(name),
       name: name,
-      host: Uri.parse(url).host,
-      port: Uri.parse(url).port,
+      host: uri.host,
+      port: uri.hasPort ? uri.port : (uri.scheme == 'https' ? 443 : 80),
       user: 'agent',
       kind: 'agent',
+      https: uri.scheme == 'https',
       agentUrl: url,
+      sortOrder: maxOrder + 1,
     );
     final p = _PerServer(server: s, client: AgentClient(url: url, token: token));
     _perServer[s.id] = p;
@@ -193,6 +204,58 @@ class MonitorStore extends ChangeNotifier {
     // Kick off an immediate probe so the user sees the result fast.
     unawaited(p.pollOnce());
     return s;
+  }
+
+  /// Update an existing server's connection info. The AgentClient is
+  /// rebuilt with the new URL/token (and the trust cache is implicitly
+  /// picked up on first poll).
+  Future<void> updateServer({
+    required String id,
+    required String name,
+    required String url,
+    required String token,
+  }) async {
+    final idx = _servers.indexWhere((s) => s.id == id);
+    if (idx < 0) return;
+    final old = _servers[idx];
+    final uri = Uri.parse(url);
+    final updated = old.copyWith(
+      name: name,
+      host: uri.host,
+      port: uri.hasPort ? uri.port : (uri.scheme == 'https' ? 443 : 80),
+      https: uri.scheme == 'https',
+      agentUrl: url,
+    );
+    // Rebuild the client
+    final oldP = _perServer.remove(id);
+    oldP?.client?.close();
+    final newP = _PerServer(
+      server: updated,
+      client: AgentClient(url: url, token: token),
+    );
+    _perServer[id] = newP;
+    _servers = [..._servers]..[idx] = updated;
+    if (_currentServer?.id == id) _currentServer = updated;
+    await _saveServers(_servers, token: token);
+    notifyListeners();
+    unawaited(newP.pollOnce());
+  }
+
+  /// Reorder the server list (called by ReorderableListView).
+  Future<void> reorderServers(int oldIndex, int newIndex) async {
+    if (oldIndex < 0 || oldIndex >= _servers.length) return;
+    if (newIndex > _servers.length) newIndex = _servers.length;
+    if (newIndex > oldIndex) newIndex -= 1;
+    if (oldIndex == newIndex) return;
+    final list = List<MonitorServer>.from(_servers);
+    final item = list.removeAt(oldIndex);
+    list.insert(newIndex, item);
+    // Persist new order into sortOrder so it survives restarts.
+    _servers = [
+      for (int i = 0; i < list.length; i++) list[i].copyWith(sortOrder: i),
+    ];
+    notifyListeners();
+    await _saveServers(_servers);
   }
 
   /// Delete a server. Stops polling and forgets credentials.

@@ -30,38 +30,70 @@ class OverviewPage extends StatelessWidget {
       color: const Color(0xFFFF6B95),
       backgroundColor: Colors.white,
       onRefresh: () async => Future.delayed(const Duration(milliseconds: 500)),
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-        children: [
-          if (store.error != null)
-            Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: const Color(0x1AE53935),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0x55E53935)),
-              ),
-              child: Row(
+      child: CustomScrollView(
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            sliver: SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.warning_amber_rounded, color: Color(0xFFE53935), size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text('拉取失败：${store.error}', style: const TextStyle(color: Color(0xFF8B1A1A), fontSize: 12))),
+                  if (store.error != null)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0x1AE53935),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0x55E53935)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded, color: Color(0xFFE53935), size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text('拉取失败：${store.error}', style: const TextStyle(color: Color(0xFF8B1A1A), fontSize: 12))),
+                        ],
+                      ),
+                    ),
                 ],
               ),
             ),
-          ...store.orderedServers.map((s) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _ServerCard(server: s, store: store),
-              )),
-          const SizedBox(height: 8),
-          if (store.lastSuccessAt != null)
-            Center(
-              child: Text(
-                '更新于 ${_fmtTime(store.lastSuccessAt!)}',
-                style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+            sliver: SliverReorderableList(
+              itemCount: store.orderedServers.length,
+              onReorder: (oldIndex, newIndex) {
+                store.reorderServers(oldIndex, newIndex);
+              },
+              itemBuilder: (ctx, i) {
+                final s = store.orderedServers[i];
+                return Padding(
+                  key: ValueKey(s.id),
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _ServerCard(server: s, store: store, index: i),
+                );
+              },
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+            sliver: SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 8),
+                  if (store.lastSuccessAt != null)
+                    Center(
+                      child: Text(
+                        '更新于 ${_fmtTime(store.lastSuccessAt!)}',
+                        style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11),
+                      ),
+                    ),
+                ],
               ),
             ),
+          ),
         ],
       ),
     );
@@ -122,7 +154,8 @@ class _EmptyView extends StatelessWidget {
 class _ServerCard extends StatelessWidget {
   final MonitorServer server;
   final MonitorStore store;
-  const _ServerCard({required this.server, required this.store});
+  final int index;
+  const _ServerCard({required this.server, required this.store, required this.index});
 
   @override
   Widget build(BuildContext context) {
@@ -135,31 +168,35 @@ class _ServerCard extends StatelessWidget {
     final temp = cpu?.tempC ?? 0;
     final isVps = agent?.isVps ?? false;
 
-    return GlassCard(
-      onTap: () => store.selectServer(server),
-      onLongPress: () => _showServerMenu(context),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                isVps ? Icons.public_rounded : Icons.dns_rounded,
-                size: 20,
-                color: const Color(0xFFFF6B95),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  server.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A)),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: GlassCard(
+            onTap: () => store.selectServer(server),
+            onLongPress: () => _showServerMenu(context),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      isVps ? Icons.public_rounded : Icons.dns_rounded,
+                      size: 20,
+                      color: const Color(0xFFFF6B95),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        server.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A)),
+                      ),
+                    ),
+                    StatusBadge(agent: agent),
+                  ],
                 ),
-              ),
-              StatusBadge(agent: agent),
-            ],
-          ),
           const SizedBox(height: 10),
           if (agent == null) ...[
             Builder(builder: (ctx) {
@@ -226,8 +263,27 @@ class _ServerCard extends StatelessWidget {
               ],
             ),
           ],
-        ],
-      ),
+              ],
+            ),
+          ),
+        ),
+        // 拖动手柄：长按这个才能拖动排序
+        ReorderableDragStartListener(
+          index: index,
+          child: Container(
+            width: 36,
+            margin: const EdgeInsets.only(left: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF7F7FA),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE5E5EA), width: 0.6),
+            ),
+            child: const Center(
+              child: Icon(Icons.drag_indicator_rounded, size: 22, color: Color(0xFFB5B5BD)),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -275,6 +331,16 @@ class _ServerMenu extends StatelessWidget {
             onTap: () {
               Navigator.pop(context);
               store.selectServer(server);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.edit_rounded, color: Color(0xFFFF6B95)),
+            title: const Text('编辑'),
+            subtitle: const Text('改名字 / 域名 / 端口 / Token',
+                style: TextStyle(fontSize: 11, color: Color(0xFF7A7A82))),
+            onTap: () {
+              Navigator.pop(context);
+              AddServerDialog.show(context, store, initial: server);
             },
           ),
           ListTile(

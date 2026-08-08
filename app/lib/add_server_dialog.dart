@@ -24,13 +24,19 @@ import 'trusted_certs.dart';
 
 class AddServerDialog extends StatefulWidget {
   final MonitorStore store;
-  const AddServerDialog({super.key, required this.store});
+  final MonitorServer? initial;  // 非空 = 编辑模式
+  const AddServerDialog({super.key, required this.store, this.initial});
 
-  static Future<MonitorServer?> show(BuildContext context, MonitorStore store) {
+  static Future<MonitorServer?> show(
+    BuildContext context,
+    MonitorStore store, {
+    MonitorServer? initial,
+  }) {
+    final isEdit = initial != null;
     return showDialog<MonitorServer>(
       context: context,
       barrierColor: const Color(0x66000000),
-      builder: (ctx) => AddServerDialog(store: store),
+      builder: (ctx) => AddServerDialog(store: store, initial: initial),
     );
   }
 
@@ -40,15 +46,26 @@ class AddServerDialog extends StatefulWidget {
 
 class _AddServerDialogState extends State<AddServerDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _nameCtrl = TextEditingController();
-  final _hostCtrl = TextEditingController();
-  final _portCtrl = TextEditingController(text: '9001');
-  final _tokenCtrl = TextEditingController();
-  bool _https = true;
+  late final _nameCtrl = TextEditingController(text: widget.initial?.name ?? '');
+  late final _hostCtrl = TextEditingController(text: widget.initial?.host ?? '');
+  late final _portCtrl = TextEditingController(
+      text: (widget.initial?.port ?? 9001).toString());
+  late final _tokenCtrl = TextEditingController(
+      text: widget.store.tokenFor(widget.initial?.id ?? '') ?? '');
+  late bool _https = widget.initial?.https ?? true;
   bool _obscureToken = true;
   bool _busy = false;
   String? _testResult;
   bool _testOk = false;
+
+  bool get _isEdit => widget.initial != null;
+
+  @override
+  void initState() {
+    super.initState();
+    // 编辑模式下不预填 token（用户得主动重输，密码字段）
+    if (_isEdit) _tokenCtrl.text = '';
+  }
 
   @override
   void dispose() {
@@ -191,17 +208,28 @@ class _AddServerDialogState extends State<AddServerDialog> {
       final port = int.parse(_portCtrl.text.trim());
       final scheme = _https ? 'https' : 'http';
       final url = '$scheme://$host:$port';
-      final s = await widget.store.addAgentServer(
-        name: _nameCtrl.text.trim().isEmpty ? host : _nameCtrl.text.trim(),
-        url: url,
-        token: _tokenCtrl.text,
-      );
-      if (mounted) Navigator.of(context).pop(s);
+      final name = _nameCtrl.text.trim().isEmpty ? host : _nameCtrl.text.trim();
+      if (_isEdit) {
+        await widget.store.updateServer(
+          id: widget.initial!.id,
+          name: name,
+          url: url,
+          token: _tokenCtrl.text,
+        );
+        if (mounted) Navigator.of(context).pop(widget.initial);
+      } else {
+        final s = await widget.store.addAgentServer(
+          name: name,
+          url: url,
+          token: _tokenCtrl.text,
+        );
+        if (mounted) Navigator.of(context).pop(s);
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
           _busy = false;
-          _testResult = '[X] 添加失败：${explainError(e)}';
+          _testResult = '[X] 保存失败：${explainError(e)}';
         });
       }
     }
@@ -382,7 +410,7 @@ class _AddServerDialogState extends State<AddServerDialog> {
                   width: 16, height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                 )
-              : const Text('添加'),
+              : Text(_isEdit ? '保存' : '添加'),
         ),
       ],
     );
@@ -455,9 +483,9 @@ class _AddServerDialogState extends State<AddServerDialog> {
           child: const Icon(Icons.add_rounded, color: Color(0xFFFF6B95), size: 20),
         ),
         const SizedBox(width: 12),
-        const Expanded(
-          child: Text('添加服务器',
-              style: TextStyle(
+        Expanded(
+          child: Text(_isEdit ? '编辑服务器' : '添加服务器',
+              style: const TextStyle(
                 fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A),
               )),
         ),

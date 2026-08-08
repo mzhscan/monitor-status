@@ -443,6 +443,7 @@ class MonitorServer {
   final Map<String, bool> hiddenDisks;    // mount -> true (hidden)
   final int createdAt;
   final int updatedAt;
+  final int sortOrder;   // 用户在概览里拖拽排序的结果
 
   const MonitorServer({
     required this.id,
@@ -459,6 +460,7 @@ class MonitorServer {
     this.hiddenDisks = const {},
     this.createdAt = 0,
     this.updatedAt = 0,
+    this.sortOrder = 0,
   });
 
   factory MonitorServer.fromJson(Map<String, dynamic> j) => MonitorServer(
@@ -476,6 +478,7 @@ class MonitorServer {
         hiddenDisks: _boolMap(j['hidden_disks']),
         createdAt: _i(j['created_at']),
         updatedAt: _i(j['updated_at']),
+        sortOrder: _i(j['sort_order']),
       );
 
   /// Serialize for SharedPreferences. We persist everything the runtime
@@ -496,6 +499,7 @@ class MonitorServer {
         'hidden_disks': hiddenDisks,
         'created_at': createdAt,
         'updated_at': updatedAt,
+        'sort_order': sortOrder,
       };
 
   bool get isAgent => kind == 'agent';
@@ -513,24 +517,31 @@ class MonitorServer {
   }
 
   MonitorServer copyWith({
+    String? name,
+    String? host,
+    int? port,
+    String? agentUrl,
+    bool? https,
     Map<String, String>? diskAliases,
     Map<String, bool>? hiddenDisks,
+    int? sortOrder,
   }) =>
       MonitorServer(
         id: id,
-        name: name,
-        host: host,
-        port: port,
+        name: name ?? this.name,
+        host: host ?? this.host,
+        port: port ?? this.port,
         user: user,
         kind: kind,
-        https: https,
+        https: https ?? this.https,
         savePass: savePass,
         hasPass: hasPass,
-        agentUrl: agentUrl,
+        agentUrl: agentUrl ?? this.agentUrl,
         diskAliases: diskAliases ?? this.diskAliases,
         hiddenDisks: hiddenDisks ?? this.hiddenDisks,
         createdAt: createdAt,
         updatedAt: updatedAt,
+        sortOrder: sortOrder ?? this.sortOrder,
       );
 }
 

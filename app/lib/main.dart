@@ -18,17 +18,62 @@ void main() {
   runApp(const MonitorApp());
 }
 
-class MonitorApp extends StatelessWidget {
+class MonitorApp extends StatefulWidget {
   const MonitorApp({super.key});
+
+  @override
+  State<MonitorApp> createState() => _MonitorAppState();
+}
+
+class _MonitorAppState extends State<MonitorApp> {
+  DateTime? _lastBack;
+
+  /// 双击返回退出：第一次按提示「再按一次回到桌面」，2 秒内再按才真退出。
+  bool _handleBack() {
+    final now = DateTime.now();
+    if (_lastBack != null &&
+        now.difference(_lastBack!).inMilliseconds < 2000) {
+      return true; // 允许退出
+    }
+    _lastBack = now;
+    final messenger = _messenger;
+    if (messenger != null) {
+      messenger.clearSnackBars();
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('再按一次返回桌面'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+    return false; // 阻止退出
+  }
+
+  // 缓存 ScaffoldMessenger，build 之后用
+  final GlobalKey<ScaffoldMessengerState> _messengerKey =
+      GlobalKey<ScaffoldMessengerState>();
+  ScaffoldMessengerState? get _messenger => _messengerKey.currentState;
+
   @override
   Widget build(BuildContext context) {
     final store = MonitorStore();
     // Fire-and-forget: start loads persisted servers + starts polling.
     unawaited(store.start());
-    return MaterialApp(
-      title: '星黎监控',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (_handleBack()) {
+          // 第二次按了 → 真退出
+          Navigator.of(context).pop();
+        }
+      },
+      child: MaterialApp(
+        scaffoldMessengerKey: _messengerKey,
+        title: '星黎监控',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFFFF6B95),
@@ -85,6 +130,7 @@ class MonitorApp extends StatelessWidget {
         ),
       ),
       home: StoreScope(store: store, child: const HomePage()),
+      ),
     );
   }
 }
