@@ -97,24 +97,71 @@ echo "║   星黎监控 agent 安装向导                   ║"
 echo "╚════════════════════════════════════════════╝"
 echo ""
 
+# ===== TTY 检测 + prompt 工具 =====
+# curl | bash 这种跑法，stdin 被脚本本身占了，read 会读脚本下一行当输入。
+# 这里统一从 /dev/tty 读（如果有），没有就直接报错要求用户用 --flags。
+if [[ -e /dev/tty ]]; then
+  exec 3</dev/tty
+  PROMPT_FD=3
+else
+  PROMPT_FD=0
+fi
+
+prompt_line() {
+  local prompt="$1"
+  local varname="$2"
+  local default="${3:-}"
+  local line
+  if [[ -n "$default" ]]; then
+    printf "%s [%s]: " "$prompt" "$default" >&"$PROMPT_FD"
+  else
+    printf "%s: " "$prompt" >&"$PROMPT_FD"
+  fi
+  IFS= read -r line <&"$PROMPT_FD" || line=""
+  if [[ -z "$line" && -n "$default" ]]; then
+    line="$default"
+  fi
+  printf -v "$varname" '%s' "$line"
+}
+
+require_interactive() {
+  if [[ ! -e /dev/tty ]]; then
+    echo "" >&2
+    echo "❌ 需要 interactive 输入，但检测不到 /dev/tty" >&2
+    echo "" >&2
+    echo "💡 你大概是用 'curl | sudo bash' 跑的——这种跑法 read 会从脚本" >&2
+    echo "   本身读数据，必须传 --name / --token / --port 参数。" >&2
+    echo "" >&2
+    echo "   正确用法（任选其一）：" >&2
+    echo "   1) 先下载脚本再跑：" >&2
+    echo "      curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-agent.sh -o /tmp/install-agent.sh" >&2
+    echo "      sudo bash /tmp/install-agent.sh --version v2.0.0 --name <name> --token <token>" >&2
+    echo "" >&2
+    echo "   2) 全部用 --flags 覆盖（适合自动化）：" >&2
+    echo "      curl -fsSL ... | sudo bash -s -- --version v2.0.0 --name <n> --token <t> --port 9101" >&2
+    exit 1
+  fi
+}
+
 # agent 名字
 if [[ -z "$NAME" ]]; then
   DEFAULT_NAME=$(hostname | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g')
-  read -r -p "agent 名字（用于 app 显示）[$DEFAULT_NAME]: " NAME
-  NAME="${NAME:-$DEFAULT_NAME}"
+  require_interactive
+  prompt_line "agent 名字（用于 app 显示）" NAME "$DEFAULT_NAME"
 fi
 
 # agent token
 if [[ -z "$TOKEN" ]]; then
+  require_interactive
   while [[ -z "$TOKEN" ]]; do
-    read -r -p "agent Token（app 端连过来时用，自己设一个强密码）: " TOKEN
+    prompt_line "agent Token（app 端连过来时用，自己设一个强密码）" TOKEN
   done
 fi
 
 # 端口
 if [[ -z "$PORT" || "$PORT" == "9101" ]] && [[ "${1:-}" != "--port" ]]; then
-  read -r -p "监听端口 [9101]: " PORT
-  PORT="${PORT:-9101}"
+  require_interactive
+  prompt_line "监听端口" PORT "9101"
 fi
 
 # ===== HTTPS 证书来源 =====
@@ -123,20 +170,20 @@ echo "📜 HTTPS 证书（选 1/2/3）："
 echo "   1) 自动检测（trim OS / 3x-ui cert / 自签）  [推荐]"
 echo "   2) 我自己提供证书文件路径"
 if [[ $USE_TLS -eq 1 && -z "$CERT_FILE" ]]; then
-  read -r -p "选择 [1]: " CERT_CHOICE
-  CERT_CHOICE="${CERT_CHOICE:-1}"
+  require_interactive
+  prompt_line "选择" CERT_CHOICE "1"
   if [[ "$CERT_CHOICE" == "2" ]]; then
     while [[ -z "$CERT_FILE" || ! -f "$CERT_FILE" ]]; do
-      read -r -p "证书文件路径: " CERT_FILE
-      if [[ ! -f "$CERT_FILE" ]]; then
-        echo "❌ 文件不存在: $CERT_FILE"
+      prompt_line "证书文件路径" CERT_FILE
+      if [[ -n "$CERT_FILE" && ! -f "$CERT_FILE" ]]; then
+        echo "❌ 文件不存在: $CERT_FILE" >&2
         CERT_FILE=""
       fi
     done
     while [[ -z "$KEY_FILE" || ! -f "$KEY_FILE" ]]; do
-      read -r -p "私钥文件路径: " KEY_FILE
-      if [[ ! -f "$KEY_FILE" ]]; then
-        echo "❌ 文件不存在: $KEY_FILE"
+      prompt_line "私钥文件路径" KEY_FILE
+      if [[ -n "$KEY_FILE" && ! -f "$KEY_FILE" ]]; then
+        echo "❌ 文件不存在: $KEY_FILE" >&2
         KEY_FILE=""
       fi
     done
