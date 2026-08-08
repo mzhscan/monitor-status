@@ -57,15 +57,35 @@ class TrustedCerts {
     // Refresh any in-memory cache used by badCertificateCallback so the
     // trust takes effect on the very next poll (without waiting for an
     // app restart).
-    await _TrustedCertCache.refresh();
+    await TrustedCertCache.refresh();
   }
 
   static Future<void> untrust(String url) async {
     final m = await _load();
     m.remove(url);
     await _save(m);
-    await _TrustedCertCache.refresh();
+    await TrustedCertCache.refresh();
   }
 
   static Future<Map<String, String>> all() => _load();
+}
+
+/// In-memory mirror of [TrustedCerts]'s persisted fingerprints, so that
+/// [HttpClient.badCertificateCallback] (which is sync) can answer without
+/// awaiting SharedPreferences.
+class TrustedCertCache {
+  static Map<String, String> _map = {};
+  static bool _loaded = false;
+
+  static Future<void> refresh() async {
+    _map = await TrustedCerts.all();
+    _loaded = true;
+  }
+
+  static bool isTrusted(String url, X509Certificate cert) {
+    if (!_loaded) return false; // wait for refresh() to populate
+    final fp = TrustedCerts.fingerprint(cert);
+    final stored = _map[url];
+    return stored != null && stored == fp;
+  }
 }

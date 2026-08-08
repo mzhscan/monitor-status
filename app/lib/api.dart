@@ -10,26 +10,6 @@ import 'package:http/http.dart' as http;
 import 'models.dart';
 import 'trusted_certs.dart';
 
-/// In-memory cache of trusted cert fingerprints, refreshed by [refresh] when
-/// the user trusts/untrusts a cert. `badCertificateCallback` is sync so we
-/// can't await SharedPreferences inside it.
-class _TrustedCertCache {
-  static Map<String, String> _map = {};
-  static bool _loaded = false;
-
-  static Future<void> refresh() async {
-    _map = await TrustedCerts.all();
-    _loaded = true;
-  }
-
-  static bool isTrusted(String url, X509Certificate cert) {
-    if (!_loaded) return false; // wait for refresh() to populate
-    final fp = TrustedCerts.fingerprint(cert);
-    final stored = _map[url];
-    return stored != null && stored == fp;
-  }
-}
-
 class AgentClient {
   final String url;        // e.g. https://192.168.1.1:9101
   final String token;      // X-Agent-Token header value
@@ -39,7 +19,7 @@ class AgentClient {
       : _client = _buildClient(url) {
     // Pre-load the in-memory trust cache so the very first poll can
     // consult it (badCertificateCallback is sync).
-    unawaited(_TrustedCertCache.refresh());
+    unawaited(TrustedCertCache.refresh());
   }
 
   static http.Client _buildClient(String url) {
@@ -55,7 +35,7 @@ class AgentClient {
     // add_server_dialog.dart.)
     final io = HttpClient()..badCertificateCallback = (cert, host, port) {
       // 1) Explicit user-pinned TOFU trust for this URL.
-      if (_TrustedCertCache.isTrusted(url, cert)) return true;
+      if (TrustedCertCache.isTrusted(url, cert)) return true;
       // 2) Workaround for Dart's hostname check not recognizing IP-based
       //    SAN entries. LE certs issued for an IP (e.g. /root/cert/ip/)
       //    chain to a system-trusted root but Dart still flags
