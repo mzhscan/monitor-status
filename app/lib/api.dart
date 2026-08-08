@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/io_client.dart' as io_client;
 import 'package:http/http.dart' as http;
+import 'errors.dart';
 import 'models.dart';
 import 'trusted_certs.dart';
 
@@ -93,15 +94,17 @@ class AgentClient {
       }
       return {'success': false, 'error': 'HTTP ${r.statusCode}'};
     } on SocketException catch (e) {
-      return {'success': false, 'error': '网络错误：${e.message}'};
+      return {'success': false, 'error': explainError(e)};
     } on HandshakeException catch (e) {
       return {
         'success': false,
-        'error': 'TLS 证书不被信任：${e.message}',
+        'error': explainError(e),
         'tls_untrusted': true,
       };
+    } on TimeoutException catch (_) {
+      return {'success': false, 'error': explainError(_)};
     } catch (e) {
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'error': explainError(e)};
     }
   }
 

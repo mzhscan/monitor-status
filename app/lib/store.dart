@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
+import 'errors.dart';
 import 'models.dart';
 
 /// `context.monitor` — InheritedWidget sugar so widgets deep in the tree
@@ -330,7 +331,7 @@ class _PerServer {
       lastSuccessMs = DateTime.now().millisecondsSinceEpoch;
       lastError = null;
     } catch (e) {
-      lastError = e.toString();
+      lastError = explainError(e);
     }
   }
 }

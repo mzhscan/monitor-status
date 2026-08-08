@@ -1,18 +1,23 @@
-// 添加服务器对话框 —— v2.0.0 简化版
+// 添加服务器对话框 —— v2.1 简化版
 //
-// 不再有 SSH/Agent 切换。所有被监控机器必须装 agent（由 install-agent.sh
-// 一键部署），用户在 app 里填 agent 地址 + token。
+// 不再有 SSH/Agent 切换。被监控机器必须装 agent（由 install-agent.sh
+// 一键部署），用户在 app 里填：
+//   - 名称（显示用）
+//   - 域名或 IP（不含 http://）
+//   - 端口
+//   - HTTP / HTTPS 开关
+//   - Agent Token
 //
-// 包含：
-//   - 名称（用户自定义）
-//   - Agent 地址（https://host:port，agent 暴露的 URL）
-//   - Agent Token（agent 启动时配置的 secret）
-//   - 测试连接按钮：探测 + 处理自签证书首次信任弹窗
+// 提交时由 app 自动拼成完整 URL。包含：
+//   - 实时拼好的 URL 预览
+//   - 测试连接按钮
+//   - 首次连接自签证书的 TOFU 弹框
 //   - 取消 / 添加 按钮
 
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'api.dart';
+import 'errors.dart';
 import 'models.dart';
 import 'store.dart';
 import 'trusted_certs.dart';
@@ -36,18 +41,30 @@ class AddServerDialog extends StatefulWidget {
 class _AddServerDialogState extends State<AddServerDialog> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
-  final _urlCtrl = TextEditingController();
+  final _hostCtrl = TextEditingController();
+  final _portCtrl = TextEditingController(text: '9001');
   final _tokenCtrl = TextEditingController();
+  bool _https = true;
   bool _obscureToken = true;
   bool _busy = false;
   String? _testResult;
+  bool _testOk = false;
 
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _urlCtrl.dispose();
+    _hostCtrl.dispose();
+    _portCtrl.dispose();
     _tokenCtrl.dispose();
     super.dispose();
+  }
+
+  String get _fullUrl {
+    final host = _hostCtrl.text.trim();
+    final port = _portCtrl.text.trim();
+    final scheme = _https ? 'https' : 'http';
+    if (host.isEmpty) return '${scheme}://（域名/IP）:${port.isEmpty ? "端口" : port}';
+    return '$scheme://$host:${port.isEmpty ? "?" : port}';
   }
 
   Future<void> _doTest() async {
@@ -55,19 +72,19 @@ class _AddServerDialogState extends State<AddServerDialog> {
     setState(() {
       _busy = true;
       _testResult = null;
+      _testOk = false;
     });
-    final url = _urlCtrl.text.trim();
+    final url = _fullUrl;
     final token = _tokenCtrl.text;
     final res = await widget.store.testAgent(url: url, token: token);
     if (!mounted) return;
 
     if (res['tls_untrusted'] == true) {
-      // Surface the cert's SHA-256 fingerprint and offer to trust it.
       final fp = await _captureCertFingerprint(url);
       if (!mounted) return;
       if (fp == null) {
         setState(() {
-          _testResult = '[X] 探测到证书问题，但无法获取指纹';
+          _testResult = '探测到证书问题，但无法获取指纹';
           _busy = false;
         });
         return;
@@ -121,15 +138,13 @@ class _AddServerDialogState extends State<AddServerDialog> {
       );
       if (accept == true) {
         await TrustedCerts.trust(url, fp);
-        // Refresh the in-memory cache that badCertificateCallback consults.
-        // (We rebuild a fresh AgentClient below to pick up the change.)
-        // Re-test now that the cert is trusted.
         final res2 = await widget.store.testAgent(url: url, token: token);
         if (!mounted) return;
         setState(() {
+          _testOk = res2['success'] == true;
           _testResult = res2['success'] == true
               ? '[OK] 证书已信任，连接成功'
-              : '[X] 仍无法连接：${res2['error']}';
+              : '[X] ${res2['error'] ?? "仍无法连接"}';
           _busy = false;
         });
         return;
@@ -142,16 +157,14 @@ class _AddServerDialogState extends State<AddServerDialog> {
     }
 
     setState(() {
+      _testOk = res['success'] == true;
       _testResult = res['success'] == true
           ? '[OK] 连接成功'
-          : '[X] ${res['error'] ?? '未知错误'}';
+          : '[X] ${res['error'] ?? "未知错误"}';
       _busy = false;
     });
   }
 
-  /// Try to capture the cert fingerprint by making a raw socket connection.
-  /// This bypasses the AgentClient's TOFU check so we can show the user
-  /// what cert the server is presenting.
   Future<String?> _captureCertFingerprint(String url) async {
     try {
       final uri = Uri.parse(url);
@@ -159,9 +172,8 @@ class _AddServerDialogState extends State<AddServerDialog> {
         uri.host,
         uri.port,
         timeout: const Duration(seconds: 5),
-        onBadCertificate: (_) => true, // accept to peek
+        onBadCertificate: (_) => true,
       );
-      // Wait for handshake to complete then grab the peer cert.
       final cert = await sock.peerCertificate;
       sock.destroy();
       if (cert == null) return null;
@@ -175,11 +187,13 @@ class _AddServerDialogState extends State<AddServerDialog> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _busy = true);
     try {
+      final host = _hostCtrl.text.trim();
+      final port = int.parse(_portCtrl.text.trim());
+      final scheme = _https ? 'https' : 'http';
+      final url = '$scheme://$host:$port';
       final s = await widget.store.addAgentServer(
-        name: _nameCtrl.text.trim().isEmpty
-            ? Uri.parse(_urlCtrl.text.trim()).host
-            : _nameCtrl.text.trim(),
-        url: _urlCtrl.text.trim(),
+        name: _nameCtrl.text.trim().isEmpty ? host : _nameCtrl.text.trim(),
+        url: url,
         token: _tokenCtrl.text,
       );
       if (mounted) Navigator.of(context).pop(s);
@@ -187,7 +201,7 @@ class _AddServerDialogState extends State<AddServerDialog> {
       if (mounted) {
         setState(() {
           _busy = false;
-          _testResult = '[X] 添加失败：$e';
+          _testResult = '[X] 添加失败：${explainError(e)}';
         });
       }
     }
@@ -200,7 +214,7 @@ class _AddServerDialogState extends State<AddServerDialog> {
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: Color(0xFFE5E5EA), width: 0.6),
+        side: const BorderSide(color: 0xFFE5E5EA, width: 0.6),
       ),
       titlePadding: const EdgeInsets.fromLTRB(20, 16, 12, 0),
       contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
@@ -212,12 +226,11 @@ class _AddServerDialogState extends State<AddServerDialog> {
           child: Form(
             key: _formKey,
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
                   '每台被监控的服务器都需要先安装 agent（一键脚本见 GitHub）。\n'
-                  '填 agent 暴露的 HTTPS 地址 + token。',
+                  '填 agent 暴露的域名/IP + 端口 + 协议 + token。',
                   style: TextStyle(color: Color(0xFF7A7A82), fontSize: 12),
                 ),
                 const SizedBox(height: 14),
@@ -228,20 +241,58 @@ class _AddServerDialogState extends State<AddServerDialog> {
                   icon: Icons.bookmark_border_rounded,
                 ),
                 const SizedBox(height: 12),
-                _label('Agent 地址（HTTPS）'),
+                _label('域名或 IP'),
                 _input(
-                  controller: _urlCtrl,
-                  hint: 'https://server.example.com:9101',
+                  controller: _hostCtrl,
+                  hint: '例如：us-vps.example.com 或 23.141.204.236',
                   icon: Icons.dns_rounded,
                   keyboardType: TextInputType.url,
                   validator: (v) {
                     if (v == null || v.trim().isEmpty) return '必填';
                     final s = v.trim();
-                    if (!s.startsWith('http://') && !s.startsWith('https://')) {
-                      return '需要 http:// 或 https:// 开头';
+                    if (s.contains('://')) {
+                      return '不要带 http:// / https://，协议下面单独选';
                     }
+                    if (s.contains(' ')) return '不能含空格';
+                    if (s.contains('/')) return '不要带路径，只填域名或 IP';
                     return null;
                   },
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _label('端口'),
+                          _input(
+                            controller: _portCtrl,
+                            hint: '9001',
+                            icon: Icons.numbers_rounded,
+                            keyboardType: TextInputType.number,
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) return '必填';
+                              final p = int.tryParse(v.trim());
+                              if (p == null) return '必须是数字';
+                              if (p < 1 || p > 65535) return '范围 1-65535';
+                              return null;
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _label('协议'),
+                          _httpsToggle(),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 _label('Agent Token'),
@@ -262,20 +313,45 @@ class _AddServerDialogState extends State<AddServerDialog> {
                   ),
                   validator: (v) => (v == null || v.trim().isEmpty) ? '必填' : null,
                 ),
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF0F5),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '实际地址：$_fullUrl',
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 11,
+                      color: Color(0xFF1A1A1A),
+                    ),
+                  ),
+                ),
                 if (_testResult != null) ...[
                   const SizedBox(height: 10),
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFFF0F5),
+                      color: _testOk
+                          ? const Color(0xFFEDFAF1)
+                          : const Color(0xFFFFF0F5),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0x33FFB6C1)),
+                      border: Border.all(
+                        color: _testOk
+                            ? const Color(0x3310B981)
+                            : const Color(0x33FFB6C1),
+                      ),
                     ),
                     child: Text(
                       _testResult!,
-                      style: const TextStyle(
-                        color: Color(0xFF2C2C2C),
+                      style: TextStyle(
+                        color: _testOk
+                            ? const Color(0xFF065F46)
+                            : const Color(0xFF1A1A1A),
                         fontSize: 12,
                         fontFamily: 'monospace',
                         height: 1.4,
@@ -309,6 +385,61 @@ class _AddServerDialogState extends State<AddServerDialog> {
               : const Text('添加'),
         ),
       ],
+    );
+  }
+
+  Widget _httpsToggle() {
+    return Container(
+      height: 44,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F7FA),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE5E5EA), width: 0.6),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _https = true),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: _https ? const Color(0xFFFF6B95) : Colors.transparent,
+                  borderRadius: const BorderRadius.horizontal(left: Radius.circular(12)),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  'HTTPS',
+                  style: TextStyle(
+                    color: _https ? Colors.white : const Color(0xFF7A7A82),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _https = false),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: !_https ? const Color(0xFFFF6B95) : Colors.transparent,
+                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(12)),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  'HTTP',
+                  style: TextStyle(
+                    color: !_https ? Colors.white : const Color(0xFF7A7A82),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -364,6 +495,7 @@ class _AddServerDialogState extends State<AddServerDialog> {
       keyboardType: keyboardType,
       validator: validator,
       style: const TextStyle(fontSize: 14, color: Color(0xFF1A1A1A)),
+      onChanged: (_) => setState(() {}), // 刷新 URL 预览
       decoration: InputDecoration(
         isDense: true,
         hintText: hint,
