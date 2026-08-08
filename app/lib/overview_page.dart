@@ -147,35 +147,47 @@ class _ServerCard extends StatelessWidget {
     final temp = cpu?.tempC ?? 0;
     final isVps = agent?.isVps ?? false;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          child: GlassCard(
-            onTap: () => store.selectServer(server),
-            onLongPress: () => _showServerMenu(context),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    // v2.2.0 原 layout 是 Row + crossAxisAlignment.stretch + Container(width:36)，
+    // 那个 Container 没有显式高度，stretch 时和 ReorderableListView 父级会计算
+    // 出 0 高度，导致只有一张卡片可见。
+    // 修法：把拖手柄放进 GlassCard 内部，整张卡就是一个 widget，layout 简单且
+    // 不会丢。外观接近 v2.2.0，但卡片本体宽度更大（手柄不再占 36px 外侧空间）。
+    return ReorderableDelayedDragStartListener(
+      index: index,
+      child: GlassCard(
+        onTap: () => store.selectServer(server),
+        onLongPress: () => _showServerMenu(context),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Row(
-                  children: [
-                    Icon(
-                      isVps ? Icons.public_rounded : Icons.dns_rounded,
-                      size: 20,
-                      color: const Color(0xFFFF6B95),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        server.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A)),
-                      ),
-                    ),
-                    StatusBadge(agent: agent),
-                  ],
+                Icon(
+                  isVps ? Icons.public_rounded : Icons.dns_rounded,
+                  size: 20,
+                  color: const Color(0xFFFF6B95),
                 ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    server.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A)),
+                  ),
+                ),
+                StatusBadge(agent: agent),
+                const SizedBox(width: 4),
+                // 拖手柄挪到卡片内部右上角
+                ReorderableDragStartListener(
+                  index: index,
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.drag_indicator_rounded, size: 20, color: Color(0xFFB5B5BD)),
+                  ),
+                ),
+              ],
+            ),
           const SizedBox(height: 10),
           if (agent == null) ...[
             Builder(builder: (ctx) {
@@ -242,27 +254,9 @@ class _ServerCard extends StatelessWidget {
               ],
             ),
           ],
-              ],
-            ),
-          ),
+          ],
         ),
-        // 拖动手柄：长按这个才能拖动排序
-        ReorderableDragStartListener(
-          index: index,
-          child: Container(
-            width: 36,
-            margin: const EdgeInsets.only(left: 4),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF7F7FA),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE5E5EA), width: 0.6),
-            ),
-            child: const Center(
-              child: Icon(Icons.drag_indicator_rounded, size: 22, color: Color(0xFFB5B5BD)),
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 
