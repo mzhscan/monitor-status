@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 // 3xui's `last_online` is the timestamp of the most recent connection from
@@ -44,7 +44,7 @@ func CollectXUI(dbPath string) (map[string]interface{}, error) {
 		return nil, err
 	}
 
-	db, err := sql.Open("sqlite3", "file:"+tmpDB+"?mode=ro&immutable=1")
+	db, err := sql.Open("sqlite", "file:"+tmpDB+"?mode=ro&immutable=1")
 	if err != nil {
 		return nil, err
 	}

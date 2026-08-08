@@ -48,6 +48,7 @@ release.keystore
 *.jks
 *.p12
 *.pfx
+app/android/app/keystore/
 
 # GitHub Actions workflows (push via API due to PAT scope)
 .github/workflows/*
