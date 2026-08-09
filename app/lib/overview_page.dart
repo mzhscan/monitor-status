@@ -86,24 +86,7 @@ class _OverviewPageState extends State<OverviewPage> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
         children: [
-          if (store.error != null)
-            Container(
-              key: const ValueKey('error-banner'),
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: const Color(0x1AE53935),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0x55E53935)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.warning_amber_rounded, color: Color(0xFFE53935), size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text('拉取失败：${store.error}', style: const TextStyle(color: Color(0xFF8B1A1A), fontSize: 12))),
-                ],
-              ),
-            ),
+          // 错误提示挪到 AppBar 右上角红 icon + 错误详情页（v2.4.16）
           // 排序模式 banner：iOS 主屏编辑风格的"完成"条。仅在 sort mode 时显示。
           if (_isSortMode) _buildSortModeBanner(),
           for (int i = 0; i < store.orderedServers.length; i++)

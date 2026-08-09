@@ -465,6 +465,16 @@ class MonitorStore extends ChangeNotifier {
     await _tickAll();
   }
 
+  /// 清空所有错误显示（不会重新拉数据，下个 poll 周期会自然更新）。
+  /// 给错误详情页的「清空」按钮用。
+  void clearError() {
+    _error = null;
+    for (final p in _perServer.values) {
+      p.lastError = null;
+    }
+    notifyListeners();
+  }
+
   Future<void> _tickAll() async {
     if (_isLoading) return;
     _isLoading = true;

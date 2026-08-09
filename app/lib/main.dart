@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'about_page.dart';
 import 'add_server_dialog.dart';
 import 'dynamic_server_page.dart';
+import 'error_page.dart';
 import 'overview_page.dart';
 import 'store.dart';
 import 'toast.dart';
@@ -224,6 +225,8 @@ class _HomePageState extends State<HomePage> {
             title: _ServerSelector(store: store),
             actions: [
               _AboutButton(),
+              if (ErrorDetailsPage.hasErrors(store))
+                _ErrorIndicatorButton(store: store),
               _AddButton(store: store),
               if (store.isLoading)
                 const Padding(
@@ -307,6 +310,60 @@ class _AboutButton extends StatelessWidget {
           child: const Padding(
             padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Icon(Icons.info_outline_rounded, size: 20, color: Color(0xFF7A7A82)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// AppBar 上的错误指示器：红 icon + 角标，点了进 ErrorDetailsPage。
+/// 没有错误时 main.dart 不渲染这个 widget，不用考虑。
+class _ErrorIndicatorButton extends StatelessWidget {
+  final MonitorStore store;
+  const _ErrorIndicatorButton({required this.store});
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 0),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => ErrorDetailsPage(store: store),
+            ));
+          },
+          borderRadius: BorderRadius.circular(20),
+          child: Tooltip(
+            message: '查看错误',
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  const Icon(
+                    Icons.error_outline_rounded,
+                    size: 20,
+                    color: Color(0xFFE53935),
+                  ),
+                  // 右上角红点提示有错误
+                  Positioned(
+                    top: -2,
+                    right: -3,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE53935),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1.2),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
