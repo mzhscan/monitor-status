@@ -26,15 +26,16 @@ class OverviewPage extends StatefulWidget {
 class _OverviewPageState extends State<OverviewPage> {
   // ----- Drag state (hand-rolled drag-to-reorder, v2.4.0) -----
   // All card positions are captured in screen-global coordinates so the
-  // floating preview + drop indicator can be positioned via the Stack's
-  // RenderBox regardless of how the ListView scrolls.
+  // floating preview can be positioned via the Stack's RenderBox regardless
+  // of how the ListView scrolls. v2.4.2 dropped the drop-indicator line in
+  // favour of actually pushing the other cards out of the way (transform
+  // translate), which is far more obvious.
   int? _draggingIndex;
   Offset? _dragCardStartGlobal; // top-left of the source card at drag start
   Offset? _dragFingerStartGlobal; // finger position at drag start
   Offset? _dragFingerCurrentGlobal; // current finger position (updated on move)
   Size? _dragCardSize; // size of the source card
   int? _hoverIndex; // "insert before this index" — equals N means "append"
-  double? _hoverLineGlobalY; // global Y of the drop indicator line
 
   // GlobalKey per card (keyed by stable server.id) so we can look up each
   // card's RenderBox during a drag to compute hover position.
@@ -70,8 +71,6 @@ class _OverviewPageState extends State<OverviewPage> {
       key: _stackKey,
       children: [
         _buildList(),
-        // Drop indicator line (rendered between cards based on _hoverIndex)
-        if (_hoverLineGlobalY != null) _buildDropIndicator(),
         // Floating card preview that follows the finger
         if (_draggingIndex != null) _buildFloatingCard(),
       ],
@@ -128,6 +127,28 @@ class _OverviewPageState extends State<OverviewPage> {
     // Allocate a GlobalKey for this card on first render; reused on rebuilds.
     _cardKeys.putIfAbsent(server.id, () => GlobalKey());
     final isDragging = _draggingIndex == i;
+
+    // v2.4.2：计算这张卡需要偏移多少，让"中间"的卡真的让位置给拖动卡。
+    // 例如拖 index=1 的卡往下到 index=3，则 index 2、3 各自往上挪一格；
+    // 反之拖 index=3 的卡往上到 index=1，则 index 1、2 各自往下挪一格。
+    // 用 dragging 卡的高度 + 10px padding 作为一格的位移量。
+    double targetDy = 0;
+    if (_draggingIndex != null &&
+        _hoverIndex != null &&
+        _draggingIndex != _hoverIndex &&
+        !isDragging) {
+      final slotHeight = (_dragCardSize?.height ?? 100) + 10;
+      final from = _draggingIndex!;
+      final to = _hoverIndex!;
+      if (from < to) {
+        // 向下拖：中间 (from, to] 区间内的卡往上挤 -slotHeight
+        if (i > from && i <= to) targetDy = -slotHeight;
+      } else {
+        // 向上拖：中间 [to, from) 区间内的卡往下挤 +slotHeight
+        if (i >= to && i < from) targetDy = slotHeight;
+      }
+    }
+
     final slot = Padding(
       key: ValueKey('slot-${server.id}'),
       padding: const EdgeInsets.only(bottom: 10),
@@ -149,8 +170,21 @@ class _OverviewPageState extends State<OverviewPage> {
         ),
       ),
     );
-    // 排序模式下：非正在拖的卡都套上 iOS 抖动动画。被拖的那张不抖（避免和悬浮预览打架）
-    if (_isSortMode && !isDragging) {
+
+    // 拖动中且需要偏移：套 TweenAnimationBuilder 让位移是丝滑的过渡而不是瞬移
+    if (_draggingIndex != null && targetDy != 0) {
+      return TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: targetDy),
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        builder: (context, dy, child) =>
+            Transform.translate(offset: Offset(0, dy), child: child),
+        child: slot,
+      );
+    }
+
+    // 排序模式下：非正在拖的卡套上 iOS 抖动（被拖的那张不抖，避免和悬浮预览打架）
+    if (_isSortMode && _draggingIndex == null && !isDragging) {
       return _ShakeAnimation(enabled: true, child: slot);
     }
     return slot;
@@ -215,7 +249,6 @@ class _OverviewPageState extends State<OverviewPage> {
       _dragFingerStartGlobal = fingerGlobal;
       _dragFingerCurrentGlobal = fingerGlobal;
       _hoverIndex = index; // start at "leave in place"
-      _updateHoverLine();
     });
   }
 
@@ -228,9 +261,9 @@ class _OverviewPageState extends State<OverviewPage> {
   }
 
   void _onCardDragEnd() {
-    if (_draggingIndex != null && _hoverIndex != null && _draggingIndex != _hoverIndex) {
-      store.reorderServers(_draggingIndex!, _hoverIndex!);
-    }
+    final draggingIndex = _draggingIndex;
+    final hoverIndex = _hoverIndex;
+    // 先清 drag 状态（触发 rebuild：旧顺序 + targetDy=0，卡片平滑归位）
     setState(() {
       _draggingIndex = null;
       _dragCardStartGlobal = null;
@@ -238,8 +271,11 @@ class _OverviewPageState extends State<OverviewPage> {
       _dragFingerCurrentGlobal = null;
       _dragCardSize = null;
       _hoverIndex = null;
-      _hoverLineGlobalY = null;
     });
+    // 再 reorder（触发 rebuild：新顺序，targetDy=0）
+    if (draggingIndex != null && hoverIndex != null && draggingIndex != hoverIndex) {
+      store.reorderServers(draggingIndex, hoverIndex);
+    }
   }
 
   // ----- Sort-mode entry / exit -----
@@ -257,7 +293,6 @@ class _OverviewPageState extends State<OverviewPage> {
       _dragFingerCurrentGlobal = null;
       _dragCardSize = null;
       _hoverIndex = null;
-      _hoverLineGlobalY = null;
     });
   }
 
@@ -287,65 +322,12 @@ class _OverviewPageState extends State<OverviewPage> {
       }
     }
     _hoverIndex = newHover;
-    _updateHoverLine();
   }
 
-  // Compute the Y position of the drop indicator line based on _hoverIndex.
-  // If hoverIndex < N, line goes at the top of that card. If hoverIndex == N,
-  // line goes at the bottom of the last card.
-  void _updateHoverLine() {
-    if (_hoverIndex == null) {
-      _hoverLineGlobalY = null;
-      return;
-    }
-    final servers = store.orderedServers;
-    if (servers.isEmpty) {
-      _hoverLineGlobalY = null;
-      return;
-    }
-    if (_hoverIndex! >= servers.length) {
-      // Insert at the end — use last card's bottom
-      final lastKey = _cardKeys[servers.last.id];
-      final ctx = lastKey?.currentContext;
-      if (ctx == null) { _hoverLineGlobalY = null; return; }
-      final rb = ctx.findRenderObject() as RenderBox?;
-      if (rb == null || !rb.attached) { _hoverLineGlobalY = null; return; }
-      _hoverLineGlobalY = rb.localToGlobal(Offset.zero).dy + rb.size.height;
-    } else {
-      // Insert before card at hoverIndex — use that card's top
-      final key = _cardKeys[servers[_hoverIndex!].id];
-      final ctx = key?.currentContext;
-      if (ctx == null) { _hoverLineGlobalY = null; return; }
-      final rb = ctx.findRenderObject() as RenderBox?;
-      if (rb == null || !rb.attached) { _hoverLineGlobalY = null; return; }
-      _hoverLineGlobalY = rb.localToGlobal(Offset.zero).dy;
-    }
-  }
-
-  // ----- Visual feedback: drop indicator + floating card -----
-  Widget _buildDropIndicator() {
-    final stackBox = _stackKey.currentContext?.findRenderObject() as RenderBox?;
-    if (stackBox == null || _hoverLineGlobalY == null) return const SizedBox.shrink();
-    final stackTopLeft = stackBox.localToGlobal(Offset.zero);
-    final localY = _hoverLineGlobalY! - stackTopLeft.dy;
-    return Positioned(
-      left: 12,
-      right: 12,
-      top: localY - 2, // 4px line, centered on localY
-      child: IgnorePointer(
-        child: Container(
-          height: 4,
-          decoration: BoxDecoration(
-            color: const Color(0xFFFF6B95),
-            borderRadius: BorderRadius.circular(2),
-            boxShadow: [
-              BoxShadow(color: const Color(0xFFFF6B95).withOpacity(0.4), blurRadius: 8),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  // ----- Visual feedback: floating card -----
+  // v2.4.2 砍掉了 drop indicator：v2.4.1 那条粉色线太隐蔽看不出落点。
+  // 现在靠 _buildCardSlot 里的 TweenAnimationBuilder 把中间卡整体挤开，
+  // "让位置"的动作比一条细线显眼得多。
 
   Widget _buildFloatingCard() {
     final stackBox = _stackKey.currentContext?.findRenderObject() as RenderBox?;
