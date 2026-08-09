@@ -263,6 +263,10 @@ if [[ $USE_TLS -eq 1 ]]; then
   if [[ -n "$KEY_FILE" ]]; then
     echo "KEY_FILE=$KEY_FILE" >> "$ENV_FILE"
   fi
+else
+  # Bug fix: 之前 --no-tls 只改 bash 变量、不写 env 文件，Go 端默认 UseTLS=true
+  # 导致 cert 解析失败 → 启动崩溃。显式写 false 让 Go 走 HTTP 分支。
+  echo "USE_TLS=false" >> "$ENV_FILE"
 fi
 chmod 600 "$ENV_FILE"
 
@@ -296,8 +300,13 @@ sleep 2
 if systemctl is-active --quiet server-monitor-agent; then
   echo ""
   echo "✅ 安装成功！"
+  if [[ $USE_TLS -eq 1 ]]; then
+    SCHEME="https"
+  else
+    SCHEME="http"
+  fi
   echo "   agent 名:    $NAME"
-  echo "   监听端口:    $PORT (HTTPS)"
+  echo "   监听端口:    $PORT ($SCHEME)"
   echo "   env 文件:    $ENV_FILE"
   echo "   日志:         journalctl -u server-monitor-agent -f"
   echo ""
@@ -322,10 +331,17 @@ if systemctl is-active --quiet server-monitor-agent; then
     IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "<your-server-ip>")
     echo "   Agent URL:   https://${IP}:${PORT}"
     echo "   Agent Token: $TOKEN"
+  else
+    IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "<your-server-ip>")
+    echo "   Agent URL:   http://${IP}:${PORT}"
+    echo "   Agent Token: $TOKEN"
+    echo "   ⚠️  HTTP 模式：token 明文传输，建议仅在内网/VPN/SSH 隧道下用"
   fi
   echo ""
-  echo "   （首次连接如果弹「信任证书」对话框，请与"
-  echo "    管理员核对 SHA-256 指纹后再信任）"
+  if [[ $USE_TLS -eq 1 ]]; then
+    echo "   （首次连接如果弹「信任证书」对话框，请与"
+    echo "    管理员核对 SHA-256 指纹后再信任）"
+  fi
 else
   echo "❌ 启动失败，查看日志： journalctl -u server-monitor-agent -n 30"
   exit 1
