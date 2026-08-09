@@ -25,6 +25,7 @@ REPO="mzhscan/monitor-status"
 VERSION=""
 PORT=""
 TOKENS=""
+ADD_TOKENS=""           # 追加 token（不替换现有）
 EXTERNAL_HOST=""
 EXTERNAL_IP=""
 BINARY_PATH=""
@@ -42,6 +43,7 @@ while [[ $# -gt 0 ]]; do
     --version)       VERSION="$2"; shift 2 ;;
     --port)          PORT="$2"; shift 2 ;;
     --tokens)        TOKENS="$2"; shift 2 ;;
+    --add-token)     ADD_TOKENS="${ADD_TOKENS:+${ADD_TOKENS},}$2"; shift 2 ;;
     --external-host) EXTERNAL_HOST="$2"; shift 2 ;;
     --external-ip)   EXTERNAL_IP="$2"; shift 2 ;;
     --binary)        BINARY_PATH="$2"; shift 2 ;;
@@ -125,9 +127,78 @@ require_interactive() {
     echo "" >&2
     echo "   2) 全部用 --flags 覆盖（适合自动化）：" >&2
     echo "      curl -fsSL ... | sudo bash -s -- --version v2.4.24 --port 9200 --tokens 'tok-a,tok-b' --external-host usvps.mzhhua.cn" >&2
+    echo "   3) 追加 token：sudo bash install-relay.sh --add-token '新token1,新token2'" >&2
     exit 1
   fi
 }
+
+# ===== add-token 模式（必须在所有变量解析 + interactive 引导之前）=====
+# 只传 --add-token 走"追加 token"分支：跳过下载 / 写 systemd / 改 cert，
+# 只追加 env 里的 RELAY_TOKENS= 然后 restart。
+# 保留所有现有 token、cert、binary、systemd unit、已经 push 的内存数据。
+if [[ -n "$ADD_TOKENS" && -z "$VERSION" && -z "$PORT" && -z "$TOKENS" && -z "$BINARY_PATH" && -z "$AUTO_FIREWALL" && -z "$EXTERNAL_HOST" && -z "$EXTERNAL_IP" ]]; then
+  if [[ ! -f "$ENV_FILE" ]]; then
+    echo "❌ $ENV_FILE 不存在，请先跑完整 install 流程装 relay" >&2
+    exit 1
+  fi
+  EXISTING_TOKENS=$(grep -E '^RELAY_TOKENS=' "$ENV_FILE" | sed -E 's/^RELAY_TOKENS=//')
+  if [[ -z "$EXISTING_TOKENS" ]]; then
+    echo "❌ $ENV_FILE 里没找到 RELAY_TOKENS=，文件可能坏了" >&2
+    exit 1
+  fi
+  # 拼接 + 去重（保留出现顺序）
+  COMBINED=$(printf '%s,%s' "$EXISTING_TOKENS" "$ADD_TOKENS" | tr ',' '\n' | awk '!seen[$0]++' | tr '\n' ',' | sed 's/,$//')
+  echo ""
+  echo "🔑 追加 token 模式（不重装 relay，只改 env + restart）"
+  echo "   现有 token 数: $(echo "$EXISTING_TOKENS" | tr ',' '\n' | wc -l | tr -d ' ')"
+  echo "   要追加: $(echo "$ADD_TOKENS" | tr ',' '\n' | wc -l | tr -d ' ') 个"
+  echo ""
+  echo "   追加的 token（**保存好**）："
+  echo "$ADD_TOKENS" | tr ',' '\n' | awk '{printf "     %2d. %s\n", NR, $0}'
+  echo ""
+  require_interactive
+  if ! prompt_yesno "确认追加？" "y"; then
+    echo "❌ 已取消"
+    exit 1
+  fi
+  # 改 env file（只改 RELAY_TOKENS= 那一行）
+  if grep -q '^RELAY_TOKENS=' "$ENV_FILE"; then
+    sed -i.bak -E "s|^RELAY_TOKENS=.*|RELAY_TOKENS=$COMBINED|" "$ENV_FILE"
+    rm -f "$ENV_FILE.bak"
+  else
+    echo "RELAY_TOKENS=$COMBINED" >> "$ENV_FILE"
+  fi
+  chmod 600 "$ENV_FILE"
+  # 重启 relay（保留 cert / binary / systemd unit / 已经 push 的数据）
+  if systemctl is-active --quiet server-monitor-relay.service 2>/dev/null; then
+    echo "🔄 重启 relay..."
+    systemctl restart server-monitor-relay.service
+    sleep 2
+    if systemctl is-active --quiet server-monitor-relay.service; then
+      echo "✅ relay 重启成功"
+    else
+      echo "❌ 重启失败，看日志：journalctl -u server-monitor-relay -n 50" >&2
+      exit 1
+    fi
+  else
+    echo "⚠️  relay 没在跑（不会自动启动），手动跑：sudo systemctl start server-monitor-relay" >&2
+  fi
+  cat <<EOF
+
+════════════════════════════════════════════
+✅ token 追加完成
+════════════════════════════════════════════
+env 文件:  $ENV_FILE
+当前白名单 token 数: $(echo "$COMBINED" | tr ',' '\n' | wc -l | tr -d ' ')
+
+新增的 token 列表：
+$(echo "$ADD_TOKENS" | tr ',' '\n' | awk '{printf "  %2d. %s\n", NR, $0}')
+
+下一步：在新加的内网机器上跑 install-reverse-agent.sh，token 用上面新加的。
+════════════════════════════════════════════
+EOF
+  exit 0
+fi
 
 # ===== 自动探测本机公网 IP（用于 cert SAN，仅在用户没传 --external-ip 时用）=====
 DETECTED_IP=""

@@ -289,6 +289,7 @@ sudo bash install-reverse-agent.sh --version v2.4.24 \
 | 两个 | `--version` | ✅ | `latest` 或 `v2.4.24` |
 | relay | `--port` | | 监听端口（默认 9200） |
 | relay | `--tokens` | ✅ | 逗号分隔，**每个内网机器一个** |
+| relay | `--add-token` | | **追加**新 token（不替换现有，已装过 relay 用） |
 | relay | `--external-host` | 强烈建议 | cert SAN 域名 |
 | relay | `--external-ip` | 可选 | cert SAN IP（没域名时用） |
 | reverse-agent | `--relay-url` | ✅ | relay 的 URL（带 https:// 和端口） |
@@ -298,6 +299,37 @@ sudo bash install-reverse-agent.sh --version v2.4.24 \
 | reverse-agent | `--relay-cert-fp` | 强烈建议 | relay cert SHA-256 指纹，64 字符 hex |
 | reverse-agent | `--interval` | 可选 | push 间隔（默认 5s） |
 | 两个 | `--binary` | 可选 | 本地已下载的 binary（墙内用） |
+
+## 8.1 服务端追加 token（不重装）
+
+部署完 relay 后，要给新的内网机器加 token，**不要重装**（会重置 cert / 内存里的 push 数据）。用 `--add-token`：
+
+```bash
+# 一行加 N 个（逗号分隔）
+sudo bash install-relay.sh --add-token "tok-new-1,tok-new-2,tok-new-3"
+
+# 也可以多次跑（追加 + 自动去重）
+sudo bash install-relay.sh --add-token "tok-new-4"
+sudo bash install-relay.sh --add-token "tok-new-1"   # 已存在，自动去重
+```
+
+**会做什么**：
+- 读 `/opt/server-monitor/relay.env` 里的现有 RELAY_TOKENS=
+- 拼上新的 → 去重 → 写回 env
+- `systemctl restart server-monitor-relay` 重新加载白名单
+- 保留：cert / binary / systemd unit / 已经 push 的内存数据
+
+**不会做**：
+- 重新下载 binary
+- 重新生成 cert（所以 app 端 cert trust 不变）
+- 问版本 / 端口 / 域名（这些保留上次装的值）
+
+如果想**删 token**（比如某台内网机器下线了），手动改 env：
+
+```bash
+sudo nano /opt/server-monitor/relay.env     # 改 RELAY_TOKENS=
+sudo systemctl restart server-monitor-relay
+```
 
 # 九、升级
 
