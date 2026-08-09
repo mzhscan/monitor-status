@@ -484,6 +484,11 @@ class MonitorServer {
   /// Serialize for SharedPreferences. We persist everything the runtime
   /// needs to re-establish the connection (incl. `agent_url`); tokens are
   /// added by the store layer (separate field — see store.dart).
+  ///
+  /// v2.4.15: `disk_aliases` / `hidden_disks` 不再嵌进 server 列表 JSON，
+  /// 改由 store 层用 path_provider 写到独立 `disk_config.json` 文件。
+  /// （旧数据带这两个字段也能从 fromJson 读出，默认成空 map；migration
+  /// 逻辑会把旧数据迁移到新文件。）
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
@@ -495,8 +500,6 @@ class MonitorServer {
         'save_pass': savePass,
         'has_pass': hasPass,
         if (agentUrl != null) 'agent_url': agentUrl,
-        'disk_aliases': diskAliases,
-        'hidden_disks': hiddenDisks,
         'created_at': createdAt,
         'updated_at': updatedAt,
         'sort_order': sortOrder,

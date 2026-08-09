@@ -6,8 +6,10 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
 import 'errors.dart';
@@ -149,18 +151,11 @@ class MonitorStore extends ChangeNotifier {
   /// (v2.4.4: post-save verify), false on mismatch (UI toasts on this).
   /// 改硬盘 alias / 隐藏状态。
   ///
-  /// v2.4.14 简化：硬盘 alias 和隐藏**只维护在内存里，不落盘**。
-  /// 之前的实现把整个 _servers 列表（包含 disk config）走 SharedPreferences
-  /// 保存，问题：
-  ///   1. 每次改一个盘要重新 encode 整个 server 列表
-  ///   2. Android 上 Editor.commit() 偶尔返回 false → 整次保存失败
-  ///   3. round-trip verify 反而引入假阳性（v2.4.13 撤了但没解决根本问题）
-  ///
-  /// 现在的实现：直接 in-memory 改 _servers 然后 notifyListeners()。
-  /// 代价：app 重启后 alias / 隐藏会丢，需要重新设置。
-  /// 收益：永远不会"保存失败"，逻辑也极简。
-  /// 如果以后真要持久化，用 path_provider 写文件（更稳）或者独立 SharedPreferences
-  /// key（不要嵌进 server 列表 JSON）。
+  /// v2.4.15 加回持久化（v2.4.14 砍掉过，后用户反馈 app 被杀就丢，体验差）：
+  /// 走 path_provider 写独立 `disk_config.json` 文件，跨 app 重启 / 后台被杀
+  /// 都不丢。文件位置在 app 私有 documents 目录。
+  /// 为什么不走 SharedPreferences：v2.4.4 那个 commit() 偶尔返回 false 的
+  /// 假阳性问题没根除（v2.4.13 只是撤了 round-trip verify，没改底层）。
   Future<bool> updateDiskConfig(
     String id, {
     Map<String, String>? aliases,
@@ -185,7 +180,104 @@ class MonitorStore extends ChangeNotifier {
     _servers = [..._servers]..[idx] = updated;
     if (_currentServer?.id == id) _currentServer = updated;
     notifyListeners();
-    return true;
+    return await _saveDiskConfig();
+  }
+
+  // ====== 硬盘 alias / 隐藏 持久化（v2.4.15+）======
+  // 写到 app 私有 documents 目录，Android 上是
+  //   /data/user/0/com.xingli.monitorstatus/app_flutter/disk_config.json
+  // 跨 app 重启 / 后台被杀 都保留，只有卸载 app 才清掉。
+  static const _diskConfigFileName = 'disk_config.json';
+
+  Future<File> _diskConfigFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return File('${dir.path}/$_diskConfigFileName');
+  }
+
+  /// 启动时调用：读 disk_config.json 把每个 server 的 alias/hidden 填回去。
+  /// 首次升级（老 v2.4.13 数据带 disk_aliases/hidden_disks 嵌在 server 列表里）：
+  /// 走 migration，把老数据写到新文件，server 列表的 toJson 已经不再带这两个
+  /// 字段所以自然剥离。
+  Future<void> _loadDiskConfig() async {
+    final file = await _diskConfigFile();
+    if (!await file.exists()) {
+      // 首次升级：检查 _servers 里有没有老数据，有就迁移到文件
+      await _migrateDiskConfigFromServerList();
+      return;
+    }
+    try {
+      final raw = await file.readAsString();
+      if (raw.isEmpty) return;
+      final j = jsonDecode(raw) as Map<String, dynamic>;
+      _servers = [
+        for (final s in _servers)
+          () {
+            final v = j[s.id];
+            if (v is! Map<String, dynamic>) return s;
+            final aliases = (v['aliases'] as Map<String, dynamic>?)
+                    ?.map((k, val) => MapEntry(k, val.toString())) ??
+                const <String, String>{};
+            final hidden = (v['hidden'] as Map<String, dynamic>?)?.map(
+                  (k, val) => MapEntry(k, val == true),
+                ) ??
+                const <String, bool>{};
+            return s.copyWith(diskAliases: aliases, hiddenDisks: hidden);
+          }(),
+      ];
+      if (_currentServer != null) {
+        _currentServer = _servers.firstWhere(
+          (s) => s.id == _currentServer!.id,
+          orElse: () => _currentServer!,
+        );
+      }
+    } catch (e, st) {
+      debugPrint('Failed to load disk_config.json: $e\n$st');
+    }
+  }
+
+  /// v2.4.13 及之前：disk_aliases / hidden_disks 嵌在 server 列表 JSON 里。
+  /// 一次性迁移到独立文件。
+  Future<void> _migrateDiskConfigFromServerList() async {
+    bool hasAny = false;
+    final out = <String, dynamic>{};
+    for (final s in _servers) {
+      if (s.diskAliases.isNotEmpty || s.hiddenDisks.isNotEmpty) {
+        out[s.id] = {
+          'aliases': s.diskAliases,
+          'hidden': s.hiddenDisks,
+        };
+        hasAny = true;
+      }
+    }
+    if (!hasAny) return;
+    try {
+      final file = await _diskConfigFile();
+      await file.writeAsString(jsonEncode(out));
+      debugPrint('Migrated disk config to ${file.path}');
+    } catch (e) {
+      debugPrint('Migration write failed: $e');
+    }
+  }
+
+  /// 写整张 disk config 表。空表也写（空 JSON 对象），保证文件存在。
+  Future<bool> _saveDiskConfig() async {
+    final out = <String, dynamic>{};
+    for (final s in _servers) {
+      if (s.diskAliases.isNotEmpty || s.hiddenDisks.isNotEmpty) {
+        out[s.id] = {
+          'aliases': s.diskAliases,
+          'hidden': s.hiddenDisks,
+        };
+      }
+    }
+    try {
+      final file = await _diskConfigFile();
+      await file.writeAsString(jsonEncode(out));
+      return true;
+    } catch (e, st) {
+      debugPrint('Failed to write disk_config.json: $e\n$st');
+      return false;
+    }
   }
 
   /// Initialize the store: load persisted servers, build clients, start
@@ -220,6 +312,9 @@ class MonitorStore extends ChangeNotifier {
       await _saveServers(_servers);
     }
     _servers = saved;
+    // v2.4.15: load disk alias/hidden from file (not SharedPreferences).
+    // First run after upgrade: migrate from server list JSON to file.
+    await _loadDiskConfig();
     _firstLoadDone = true;
     notifyListeners();
     _tickAll();
