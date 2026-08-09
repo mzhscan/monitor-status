@@ -72,11 +72,15 @@ mkdir -p "$DIST_DIR"
 cp "$APK_SRC" "$APK_DST"
 echo "==> staged: $APK_DST  ($(du -h "$APK_DST" | cut -f1))"
 
-# Update SHA256SUMS (APK + the two agent binaries)
+# Update SHA256SUMS (APK + agent + relay + reverse-agent binaries)
 cd "$DIST_DIR"
 shasum -a 256 \
   "$(basename "$APK_DST")" \
   agent-linux-amd64 \
   agent-linux-arm64 \
+  relay-server-linux-amd64 \
+  relay-server-linux-arm64 \
+  reverse-agent-linux-amd64 \
+  reverse-agent-linux-arm64 \
   > SHA256SUMS
 echo "==> updated SHA256SUMS"
