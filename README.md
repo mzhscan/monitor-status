@@ -44,6 +44,29 @@ sudo bash install-agent.sh --version latest \
   --key /root/cert/ip/privkey.pem
 ```
 
+### 没有公网 IP 的内网机器？
+
+v2.4.24+ 新增了 **relay + reverse-agent** 模式，让家里树莓派 / 内网 NAS / 公司内网 server 也能被监控。**app 端零改动**。
+
+- 在有公网 IP 的服务器（如 usvps）装 **relay-server**
+- 在内网机器装 **reverse-agent**，主动 push 数据给 relay
+- app 配置 server 时 URL 填 relay、token 跟 reverse-agent 一致
+
+详细部署文档：[relay/README.md](relay/README.md)
+
+```bash
+# 服务端（公网）
+curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-relay.sh | \
+  sudo bash -s -- --version latest --port 9200 \
+    --tokens "tok-nas-1,tok-nas-2" --external-host usvps.mzhhua.cn
+
+# 客户端（内网）
+curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-reverse-agent.sh | \
+  sudo bash -s -- --version latest \
+    --relay-url https://usvps.mzhhua.cn:9200 \
+    --token "tok-nas-1" --name "内网-nas-1"
+```
+
 ### HTTPS 证书
 
 agent 默认启 HTTPS（`USE_TLS=true`），自动按以下顺序找证书：
@@ -68,6 +91,8 @@ app 端首次连自签证书时，会弹"是否信任"对话框显示 SHA-256 �
 release 里有：
 - `agent-linux-amd64`：x86_64 Linux（PC、VPS、普通 Linux）
 - `agent-linux-arm64`：aarch64 Linux（树莓派 4/5、ARM VPS、Apple Silicon Mac mini、NAS）
+- `relay-server-linux-amd64` / `relay-server-linux-arm64`：v2.4.24+，公网代理（见上）
+- `reverse-agent-linux-amd64` / `reverse-agent-linux-arm64`：v2.4.24+，内网推送客户端（见上）
 
 ## Agent 配置（env）
 
