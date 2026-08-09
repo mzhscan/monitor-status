@@ -54,18 +54,19 @@ v2.4.24+ 新增了 **relay + reverse-agent** 模式，让家里树莓派 / 内�
 
 详细部署文档：[relay/README.md](relay/README.md)
 
-```bash
-# 服务端（公网）
-curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-relay.sh | \
-  sudo bash -s -- --version latest --port 9200 \
-    --tokens "tok-nas-1,tok-nas-2" --external-host usvps.mzhhua.cn
+**一键命令（脚本会一步步引导你填）**：
 
-# 客户端（内网）
-curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-reverse-agent.sh | \
-  sudo bash -s -- --version latest \
-    --relay-url https://usvps.mzhhua.cn:9200 \
-    --token "tok-nas-1" --name "内网-nas-1"
+```bash
+# 服务端（公网，SSH 到有公网的机器上跑）
+curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-relay.sh | sudo bash
+
+# 客户端（内网，SSH 到内网机器上跑）
+curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-reverse-agent.sh | sudo bash
 ```
+
+跑完会一步步问：版本 / 端口 / token / 公网域名 / 防火墙 ... 全程回车 + 选数字即可。
+
+> 自动化场景想跳过引导、传 flag 跑？看 [relay/README.md → 自动化用 flag](relay/README.md#自动化用-flag)
 
 ### HTTPS 证书
 

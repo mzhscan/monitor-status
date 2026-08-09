@@ -68,41 +68,68 @@ openssl rand -hex 16
 
 > 装在**有公网 IP 的服务器**上（这里以 usvps.mzhhua.cn:9200 为例）
 
-SSH 到公网服务器后跑：
+**一键安装（脚本会一步步问你，跟着填就行）**：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-relay.sh | \
-  sudo bash -s -- --version latest \
-    --port 9200 \
-    --tokens "tok-nas-1,tok-nas-2,tok-nas-3" \
-    --external-host usvps.mzhhua.cn
+curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-relay.sh | sudo bash
 ```
 
-**参数说明**：
+跑起来后大概长这样：
 
-| 参数 | 必填 | 说明 |
-|---|---|---|
-| `--version` | ✅ | `latest` 或 `v2.4.24` 等具体版本 |
-| `--port` | | 监听端口（默认 9100），建议 9200 避开 agent 端口 |
-| `--tokens` | ✅ | token 白名单，逗号分隔 |
-| `--external-host` | 强烈建议 | cert SAN 域名，**不传会 hostname mismatch** |
-| `--external-ip` | 可选 | 如果公网服务器没域名只有 IP，传这个 |
-| `--binary` | 可选 | 本地已下载的 binary（墙内用） |
+```
+╔════════════════════════════════════════════╗
+║   星黎监控 relay 安装向导                  ║
+╚════════════════════════════════════════════╝
+
+🔍 本机公网 IP: 22.141.204.236（自动探测的）
+
+版本（latest = 最新版 / 或填具体如 v2.4.24） [latest]: <回车>
+监听端口（避开 9009/9101 等已有端口，9200 推荐） [9200]: <回车或填 19200>
+
+🔑 token 配置：每台内网 reverse-agent 一个独立 token
+   选 1：脚本自动生成 N 个（推荐）
+   选 2：自己粘贴（逗号分隔）
+选择 [1]: 1
+要监控几台内网机器？ [1]: 2
+🔐 正在生成 2 个 token...
+   自动生成的 token（**保存好**）:
+     1. a1b2c3d4e5f6...
+     2. f6e5d4c3b2a1...
+这些 token 你保存了吗？ [Y/n]: y
+
+📜 cert SAN 域名 / IP（app 连 relay 时用，要让 cert 验证通过）
+域名（多个用逗号，留空跳过）: usvps.mzhhua.cn
+
+🔥 防火墙（自动放行 9200/tcp）
+   检测到: ufw
+是否自动放行 9200/tcp？ [Y/n]: y
+
+📦 安装预览：
+   版本:     v2.4.24
+   端口:     9200
+   ...
+确认安装？ [Y/n]: y
+✅ relay 启动成功
+```
+
+**脚本会引导你填**：
+- 版本（默认 latest）
+- 监听端口（默认 9200）
+- token 数量（自动生成 N 个 32 字符随机 token，**每个内网机器一个**）
+- 公网域名 / IP（cert SAN）
+- 是否自动放行防火墙
 
 **装完输出**会显示 token 列表、env 文件位置、systemd 状态，**保存好 token 列表**。
 
-防火墙放行端口：
+防火墙如果脚本没自动放（比如检测不到 ufw/firewalld），手动：
 
 ```bash
 # Ubuntu/Debian
 sudo ufw allow from any to any port 9200 proto tcp
 
-# 如果是 firewalld
+# firewalld
 sudo firewall-cmd --permanent --add-port=9200/tcp
 sudo firewall-cmd --reload
-
-# 或者限制 IP 段（更安全）
-sudo ufw allow from <reverse-agent 的 IP 段> to any port 9200 proto tcp
 ```
 
 **验证**：
@@ -237,29 +264,56 @@ sudo systemctl restart server-monitor-relay
 
 ---
 
-# 八、升级
+# 八、自动化用 flag
+
+上面"一键安装"模式是**脚本一步步问你**。如果你是**自动化场景**（CI、批量部署、Ansible 等），不想交互，可以传 flag 全跑：
 
 ```bash
-# 升级 relay（保持原来的 --port / --tokens / --external-host）
-curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-relay.sh | \
-  sudo bash -s -- --version v2.4.25 \
-    --port 9200 \
-    --tokens "tok-nas-1,tok-nas-2" \
-    --external-host usvps.mzhhua.cn
+# 服务端
+sudo bash install-relay.sh --version v2.4.24 \
+  --port 9200 \
+  --tokens "tok-a,tok-b,tok-c" \
+  --external-host usvps.mzhhua.cn
 
-# 升级 reverse-agent
-curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-reverse-agent.sh | \
-  sudo bash -s -- --version v2.4.25 \
-    --relay-url https://usvps.mzhhua.cn:9200 \
-    --token "tok-nas-1" \
-    --name "内网-nas-1"
+# 客户端
+sudo bash install-reverse-agent.sh --version v2.4.24 \
+  --relay-url https://usvps.mzhhua.cn:9200 \
+  --token "tok-a" \
+  --name "内网-nas-1"
 ```
 
-env 文件不会被覆盖（脚本只覆盖 binary），重启服务即可。
+**全 flag 列表**：
+
+| 命令 | flag | 必填 | 说明 |
+|---|---|---|---|
+| 两个 | `--version` | ✅ | `latest` 或 `v2.4.24` |
+| relay | `--port` | | 监听端口（默认 9200） |
+| relay | `--tokens` | ✅ | 逗号分隔，**每个内网机器一个** |
+| relay | `--external-host` | 强烈建议 | cert SAN 域名 |
+| relay | `--external-ip` | 可选 | cert SAN IP（没域名时用） |
+| reverse-agent | `--relay-url` | ✅ | relay 的 URL（带 https:// 和端口） |
+| reverse-agent | `--token` | ✅ | 服务端 token 列表里的某一个 |
+| reverse-agent | `--name` | ✅ | app 端显示名 |
+| reverse-agent | `--xui-db` | 可选 | 3x-ui sqlite 路径（默认 `/etc/x-ui/x-ui.db`） |
+| reverse-agent | `--relay-cert-fp` | 强烈建议 | relay cert SHA-256 指纹，64 字符 hex |
+| reverse-agent | `--interval` | 可选 | push 间隔（默认 5s） |
+| 两个 | `--binary` | 可选 | 本地已下载的 binary（墙内用） |
+
+# 九、升级
+
+```bash
+# 升级 relay（脚本会读之前的 env 文件，问你想保留还是改 token 等）
+curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-relay.sh | sudo bash
+
+# 升级 reverse-agent
+curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-reverse-agent.sh | sudo bash
+```
+
+env 文件不会被覆盖（脚本只覆盖 binary），重启服务即可。**升级跑同一条命令就行，不用改任何 flag**。
 
 ---
 
-# 九、故障排查
+# 十、故障排查
 
 ### 1. "数据未就绪，请稍后重试"
 
@@ -316,7 +370,7 @@ sudo cat /opt/server-monitor/reverse-agent.env | grep TOKEN
 
 ---
 
-# 十、设计取舍说明
+# 十一、设计取舍说明
 
 - **为什么不做认证 + 注册流程？** —— 多一道复杂度，对个人项目过重。静态 token whitelist 已经够用，且每个 token 只对应一台机器，泄露了影响有限。
 - **为什么不持久化数据？** —— relay 不是 source of truth。reverse-agent 永远有最新数据，relay 挂了数据丢点也无所谓。app 端的 v2.4.22 badge 会显示"离线"，用户会知道。
