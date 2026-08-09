@@ -77,6 +77,16 @@ class DynamicServerPage extends StatelessWidget {
         const SizedBox(height: 10),
         _GpuCard(gpu: gpu),
       ],
+      if (agent.isVps && agent.hasXui) ...[
+        const SizedBox(height: 10),
+        if (agent.xui!.error != null)
+          _XuiErrorCard(error: agent.xui!.error!, agentName: agent.name)
+        else
+          _VpsSection(xui: agent.xui!, agentName: agent.name),
+      ],
+      // 硬盘放最下面（v2.4.18+）：以前在 GPU 之后，进 VPS 主机详情时得先
+      // 翻过磁盘才能看到 3xui 客户端列表。挪到底部让"这台机器的核心数据"
+      // 优先展示。
       if (disks.isNotEmpty) ...[
         const SizedBox(height: 10),
         _DisksCard(
@@ -87,13 +97,6 @@ class DynamicServerPage extends StatelessWidget {
           hiddenDisks: server.hiddenDisks,
           store: store,
         ),
-      ],
-      if (agent.isVps && agent.hasXui) ...[
-        const SizedBox(height: 10),
-        if (agent.xui!.error != null)
-          _XuiErrorCard(error: agent.xui!.error!, agentName: agent.name)
-        else
-          _VpsSection(xui: agent.xui!, agentName: agent.name),
       ],
     ];
   }
