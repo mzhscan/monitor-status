@@ -1,6 +1,8 @@
 // Overview page: one glass card per registered server, plus a "add another"
 // hint if the list is empty. Tapping a card navigates to that server's
-// detail page.
+// detail page. Long-pressing a card opens a context menu. Dragging the
+// right-side drag handle reorders the list (hand-rolled in v2.4.0 to
+// avoid the ReorderableListView gray-area bug).
 
 import 'package:flutter/material.dart';
 import 'add_server_dialog.dart';
@@ -8,9 +10,36 @@ import 'models.dart';
 import 'store.dart';
 import 'widgets.dart';
 
-class OverviewPage extends StatelessWidget {
+class OverviewPage extends StatefulWidget {
   final MonitorStore store;
   const OverviewPage({super.key, required this.store});
+
+  @override
+  State<OverviewPage> createState() => _OverviewPageState();
+}
+
+class _OverviewPageState extends State<OverviewPage> {
+  // ----- Drag state (hand-rolled drag-to-reorder, v2.4.0) -----
+  // All card positions are captured in screen-global coordinates so the
+  // floating preview + drop indicator can be positioned via the Stack's
+  // RenderBox regardless of how the ListView scrolls.
+  int? _draggingIndex;
+  Offset? _dragCardStartGlobal; // top-left of the source card at drag start
+  Offset? _dragFingerStartGlobal; // finger position at drag start
+  Offset? _dragFingerCurrentGlobal; // current finger position (updated on move)
+  Size? _dragCardSize; // size of the source card
+  int? _hoverIndex; // "insert before this index" — equals N means "append"
+  double? _hoverLineGlobalY; // global Y of the drop indicator line
+
+  // GlobalKey per card (keyed by stable server.id) so we can look up each
+  // card's RenderBox during a drag to compute hover position.
+  final Map<String, GlobalKey> _cardKeys = {};
+  // GlobalKey on the Stack (so we can convert screen-global <-> Stack-local
+  // coordinates for the floating card and drop indicator).
+  final GlobalKey _stackKey = GlobalKey();
+
+  // ----- Public API preserved -----
+  MonitorStore get store => widget.store;
 
   @override
   Widget build(BuildContext context) {
@@ -26,14 +55,24 @@ class OverviewPage extends StatelessWidget {
       return const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B95)));
     }
 
+    return Stack(
+      key: _stackKey,
+      children: [
+        _buildList(),
+        // Drop indicator line (rendered between cards based on _hoverIndex)
+        if (_hoverLineGlobalY != null) _buildDropIndicator(),
+        // Floating card preview that follows the finger
+        if (_draggingIndex != null) _buildFloatingCard(),
+      ],
+    );
+  }
+
+  // ----- List (the same content as v2.3.0, just wrapped in a builder) -----
+  Widget _buildList() {
     return RefreshIndicator(
       color: const Color(0xFFFF6B95),
       backgroundColor: Colors.white,
       onRefresh: () async => Future.delayed(const Duration(milliseconds: 500)),
-      // DIAG-LISTVIEW: 换成 v1.0.9 的 ListView（不是 ReorderableListView），
-      // 验证 ReorderableListView 本身是否就是 gray area 的来源。
-      // 注意：暂时放弃 drag-to-reorder，long-press 弹菜单保留（_ServerCard 的
-      // onLongPress 在 GlassCard 上）。
       child: ListView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
         children: [
@@ -56,11 +95,7 @@ class OverviewPage extends StatelessWidget {
               ),
             ),
           for (int i = 0; i < store.orderedServers.length; i++)
-            Padding(
-              key: ValueKey(store.orderedServers[i].id),
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _ServerCard(server: store.orderedServers[i], store: store, index: i),
-            ),
+            _buildCardSlot(i),
           const SizedBox(height: 8),
           if (store.lastSuccessAt != null)
             Center(
@@ -75,10 +110,215 @@ class OverviewPage extends StatelessWidget {
     );
   }
 
+  Widget _buildCardSlot(int i) {
+    final server = store.orderedServers[i];
+    // Allocate a GlobalKey for this card on first render; reused on rebuilds.
+    _cardKeys.putIfAbsent(server.id, () => GlobalKey());
+    final isDragging = _draggingIndex == i;
+    return Padding(
+      key: ValueKey('slot-${server.id}'),
+      padding: const EdgeInsets.only(bottom: 10),
+      // Ghost effect on the source card so user can see what's being moved.
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 120),
+        opacity: isDragging ? 0.25 : 1.0,
+        child: _ServerCard(
+          // GlobalKey lets us look up the card's RenderBox during drag.
+          key: _cardKeys[server.id],
+          server: server,
+          store: store,
+          isFloating: false,
+          onDragStart: (fingerGlobal) => _onCardDragStart(i, fingerGlobal),
+          onDragUpdate: _onCardDragUpdate,
+          onDragEnd: _onCardDragEnd,
+        ),
+      ),
+    );
+  }
+
   static String _fmtTime(DateTime t) {
     final l = t.toLocal();
     return '${l.hour.toString().padLeft(2, '0')}:${l.minute.toString().padLeft(2, '0')}:${l.second.toString().padLeft(2, '0')}';
   }
+
+  // ----- Drag handlers -----
+  void _onCardDragStart(int index, Offset fingerGlobal) {
+    final cardKey = _cardKeys[store.orderedServers[index].id];
+    if (cardKey == null) return;
+    final ctx = cardKey.currentContext;
+    if (ctx == null) return;
+    final renderBox = ctx.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.attached) return;
+    setState(() {
+      _draggingIndex = index;
+      _dragCardStartGlobal = renderBox.localToGlobal(Offset.zero);
+      _dragCardSize = renderBox.size;
+      _dragFingerStartGlobal = fingerGlobal;
+      _dragFingerCurrentGlobal = fingerGlobal;
+      _hoverIndex = index; // start at "leave in place"
+      _updateHoverLine();
+    });
+  }
+
+  void _onCardDragUpdate(Offset fingerGlobal) {
+    if (_draggingIndex == null) return;
+    setState(() {
+      _dragFingerCurrentGlobal = fingerGlobal;
+      _updateHoverIndex();
+    });
+  }
+
+  void _onCardDragEnd() {
+    if (_draggingIndex != null && _hoverIndex != null && _draggingIndex != _hoverIndex) {
+      store.reorderServers(_draggingIndex!, _hoverIndex!);
+    }
+    setState(() {
+      _draggingIndex = null;
+      _dragCardStartGlobal = null;
+      _dragFingerStartGlobal = null;
+      _dragFingerCurrentGlobal = null;
+      _dragCardSize = null;
+      _hoverIndex = null;
+      _hoverLineGlobalY = null;
+    });
+  }
+
+  // Walk all card GlobalKeys to find which "slot" the finger is over.
+  // A slot is the midpoint of each card. If finger Y < card midY, insert
+  // before this card; if >=, tentatively insert after. If we walk past the
+  // last card, hoverIndex = N (append to end).
+  void _updateHoverIndex() {
+    if (_dragFingerCurrentGlobal == null) return;
+    final fingerY = _dragFingerCurrentGlobal!.dy;
+    final servers = store.orderedServers;
+    int newHover = _draggingIndex ?? 0;
+    for (int i = 0; i < servers.length; i++) {
+      if (i == _draggingIndex) continue; // skip self when iterating
+      final key = _cardKeys[servers[i].id];
+      final ctx = key?.currentContext;
+      if (ctx == null) continue;
+      final rb = ctx.findRenderObject() as RenderBox?;
+      if (rb == null || !rb.attached) continue;
+      final topY = rb.localToGlobal(Offset.zero).dy;
+      final midY = topY + rb.size.height / 2;
+      if (fingerY < midY) {
+        newHover = i;
+        break;
+      } else {
+        newHover = i + 1;
+      }
+    }
+    _hoverIndex = newHover;
+    _updateHoverLine();
+  }
+
+  // Compute the Y position of the drop indicator line based on _hoverIndex.
+  // If hoverIndex < N, line goes at the top of that card. If hoverIndex == N,
+  // line goes at the bottom of the last card.
+  void _updateHoverLine() {
+    if (_hoverIndex == null) {
+      _hoverLineGlobalY = null;
+      return;
+    }
+    final servers = store.orderedServers;
+    if (servers.isEmpty) {
+      _hoverLineGlobalY = null;
+      return;
+    }
+    if (_hoverIndex! >= servers.length) {
+      // Insert at the end — use last card's bottom
+      final lastKey = _cardKeys[servers.last.id];
+      final ctx = lastKey?.currentContext;
+      if (ctx == null) { _hoverLineGlobalY = null; return; }
+      final rb = ctx.findRenderObject() as RenderBox?;
+      if (rb == null || !rb.attached) { _hoverLineGlobalY = null; return; }
+      _hoverLineGlobalY = rb.localToGlobal(Offset.zero).dy + rb.size.height;
+    } else {
+      // Insert before card at hoverIndex — use that card's top
+      final key = _cardKeys[servers[_hoverIndex!].id];
+      final ctx = key?.currentContext;
+      if (ctx == null) { _hoverLineGlobalY = null; return; }
+      final rb = ctx.findRenderObject() as RenderBox?;
+      if (rb == null || !rb.attached) { _hoverLineGlobalY = null; return; }
+      _hoverLineGlobalY = rb.localToGlobal(Offset.zero).dy;
+    }
+  }
+
+  // ----- Visual feedback: drop indicator + floating card -----
+  Widget _buildDropIndicator() {
+    final stackBox = _stackKey.currentContext?.findRenderObject() as RenderBox?;
+    if (stackBox == null || _hoverLineGlobalY == null) return const SizedBox.shrink();
+    final stackTopLeft = stackBox.localToGlobal(Offset.zero);
+    final localY = _hoverLineGlobalY! - stackTopLeft.dy;
+    return Positioned(
+      left: 12,
+      right: 12,
+      top: localY - 2, // 4px line, centered on localY
+      child: IgnorePointer(
+        child: Container(
+          height: 4,
+          decoration: BoxDecoration(
+            color: const Color(0xFFFF6B95),
+            borderRadius: BorderRadius.circular(2),
+            boxShadow: [
+              BoxShadow(color: const Color(0xFFFF6B95).withOpacity(0.4), blurRadius: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFloatingCard() {
+    final stackBox = _stackKey.currentContext?.findRenderObject() as RenderBox?;
+    if (stackBox == null) return const SizedBox.shrink();
+    if (_dragCardStartGlobal == null ||
+        _dragFingerStartGlobal == null ||
+        _dragFingerCurrentGlobal == null ||
+        _dragCardSize == null ||
+        _draggingIndex == null) {
+      return const SizedBox.shrink();
+    }
+    final stackTopLeft = stackBox.localToGlobal(Offset.zero);
+    final cardLocalX = _dragCardStartGlobal!.dx - stackTopLeft.dx;
+    // Card follows finger by the same delta as the original offset.
+    final cardLocalY = (_dragCardStartGlobal!.dy +
+            (_dragFingerCurrentGlobal!.dy - _dragFingerStartGlobal!.dy)) -
+        stackTopLeft.dy;
+    final server = store.orderedServers[_draggingIndex!];
+    return Positioned(
+      left: cardLocalX,
+      top: cardLocalY,
+      width: _dragCardSize!.width,
+      height: _dragCardSize!.height,
+      child: IgnorePointer(
+        // Floating preview is purely visual — gestures go to the in-place card.
+        child: Transform.scale(
+          scale: 1.04,
+          alignment: Alignment.topLeft,
+          child: Opacity(
+            opacity: 0.92,
+            child: _ServerCard(
+              // No key on the floating one — it lives in a separate subtree.
+              server: server,
+              store: store,
+              isFloating: true,
+              onDragStart: _noopDragStart,
+              onDragUpdate: _noopDragUpdate,
+              onDragEnd: _noopDragEnd,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // No-op drag callbacks for the floating card preview (it can't initiate
+  // a new drag — gestures are captured by IgnorePointer anyway, but these
+  // satisfy the required positional parameters).
+  void _noopDragStart(Offset _) {}
+  void _noopDragUpdate(Offset _) {}
+  void _noopDragEnd() {}
 }
 
 class _EmptyView extends StatelessWidget {
@@ -130,8 +370,23 @@ class _EmptyView extends StatelessWidget {
 class _ServerCard extends StatelessWidget {
   final MonitorServer server;
   final MonitorStore store;
-  final int index;
-  const _ServerCard({required this.server, required this.store, required this.index});
+  // isFloating = true → this card is the preview that follows the finger
+  // during a drag. We skip the drag handle, tap, and long-press to keep it
+  // purely visual.
+  final bool isFloating;
+  final void Function(Offset fingerGlobal) onDragStart;
+  final void Function(Offset fingerGlobal) onDragUpdate;
+  final VoidCallback onDragEnd;
+
+  const _ServerCard({
+    super.key,
+    required this.server,
+    required this.store,
+    required this.isFloating,
+    required this.onDragStart,
+    required this.onDragUpdate,
+    required this.onDragEnd,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -144,47 +399,42 @@ class _ServerCard extends StatelessWidget {
     final temp = cpu?.tempC ?? 0;
     final isVps = agent?.isVps ?? false;
 
-    // v2.2.0 原 layout 是 Row + crossAxisAlignment.stretch + Container(width:36)，
-    // 那个 Container 没有显式高度，stretch 时和 ReorderableListView 父级会计算
-    // 出 0 高度，导致只有一张卡片可见。
-    // 修法：把拖手柄放进 GlassCard 内部，整张卡就是一个 widget，layout 简单且
-    // 不会丢。外观接近 v2.2.0，但卡片本体宽度更大（手柄不再占 36px 外侧空间）。
-    return ReorderableDelayedDragStartListener(
-      index: index,
-      child: GlassCard(
-        onTap: () => store.selectServer(server),
-        onLongPress: () => _showServerMenu(context),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  isVps ? Icons.public_rounded : Icons.dns_rounded,
-                  size: 20,
-                  color: const Color(0xFFFF6B95),
+    return GlassCard(
+      onTap: isFloating ? null : () => store.selectServer(server),
+      onLongPress: isFloating ? null : () => _showServerMenu(context),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isVps ? Icons.public_rounded : Icons.dns_rounded,
+                size: 20,
+                color: const Color(0xFFFF6B95),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  server.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A)),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    server.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A)),
-                  ),
-                ),
-                StatusBadge(agent: agent),
+              ),
+              StatusBadge(agent: agent),
+              if (!isFloating) ...[
                 const SizedBox(width: 4),
-                // 拖手柄挪到卡片内部右上角
-                ReorderableDragStartListener(
-                  index: index,
-                  child: const Padding(
-                    padding: EdgeInsets.all(4),
-                    child: Icon(Icons.drag_indicator_rounded, size: 20, color: Color(0xFFB5B5BD)),
-                  ),
+                // Drag handle: immediate drag on touch (matches the old
+                // ReorderableDragStartListener feel). Long-press on the
+                // card body still opens the menu — no conflict.
+                _DragHandle(
+                  onDragStart: onDragStart,
+                  onDragUpdate: onDragUpdate,
+                  onDragEnd: onDragEnd,
                 ),
               ],
-            ),
+            ],
+          ),
           const SizedBox(height: 10),
           if (agent == null) ...[
             Builder(builder: (ctx) {
@@ -251,8 +501,7 @@ class _ServerCard extends StatelessWidget {
               ],
             ),
           ],
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -266,11 +515,37 @@ class _ServerCard extends StatelessWidget {
   }
 }
 
+// Tiny widget so the GestureDetector wrapping the drag-handle icon doesn't
+// have to fight with the GlassCard's InkWell for pointer events.
+class _DragHandle extends StatelessWidget {
+  final void Function(Offset fingerGlobal) onDragStart;
+  final void Function(Offset fingerGlobal) onDragUpdate;
+  final VoidCallback onDragEnd;
+  const _DragHandle({
+    required this.onDragStart,
+    required this.onDragUpdate,
+    required this.onDragEnd,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onPanStart: (d) => onDragStart(d.globalPosition),
+      onPanUpdate: (d) => onDragUpdate(d.globalPosition),
+      onPanEnd: (_) => onDragEnd(),
+      child: const Padding(
+        padding: EdgeInsets.all(4),
+        child: Icon(Icons.drag_indicator_rounded, size: 20, color: Color(0xFFB5B5BD)),
+      ),
+    );
+  }
+}
+
 class _ServerMenu extends StatelessWidget {
   final MonitorStore store;
   final MonitorServer server;
   const _ServerMenu({required this.store, required this.server});
-
   @override
   Widget build(BuildContext context) {
     return Container(

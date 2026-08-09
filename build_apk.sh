@@ -20,6 +20,11 @@ APP_DIR="$SCRIPT_DIR/app"
 DIST_DIR="$SCRIPT_DIR/dist"
 FLAVOR="${1:-arm64}"  # arm64 | universal
 
+# Clear dead proxy vars (e.g. 127.0.0.1:1082) that would otherwise
+# break `flutter pub get` and Gradle downloads. Gradle itself is
+# handled separately in ~/.gradle/gradle.properties.
+unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy all_proxy ALL_PROXY
+
 # Parse version from pubspec.yaml (strip any CR — pubspec may be CRLF on some setups)
 PUBSPEC="$APP_DIR/pubspec.yaml"
 VERSION_LINE=$(grep -E '^version:' "$PUBSPEC" | head -1 | tr -d '\r')
