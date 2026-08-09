@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 /// 用户面向的错误信息。永远返回中文。
 String explainError(Object e) {
   if (e is SocketException) {
-    final msg = e.message ?? '';
+    final msg = e.message;
     if (msg.contains('Connection refused')) {
       return '连接被拒：agent 没在跑，或端口/防火墙拦了';
     }
@@ -63,19 +63,12 @@ String explainError(Object e) {
       return '请求超时';
     }
     if (m.contains('SocketException')) {
-      return explainError(_extractSocketException(e) ?? e);
+      return '网络错误：$m';
     }
     return '网络错误：$m';
   }
   // 兜底
   return e.toString();
-}
-
-/// 从 ClientException 里挖出原始 SocketException（如果有）。
-Object? _extractSocketException(Object e) {
-  // ClientException.message 通常是 "ClientException with SocketException: ..."
-  // 或者包含 "Connection refused" 之类
-  return null;
 }
 
 /// 用于 test() 的返回结果：除了错误文字，还要标记是否需要弹信任框。

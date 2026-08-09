@@ -1265,19 +1265,6 @@ class _VpsSection extends StatefulWidget {
 
 enum _ClientSort { total, down, up }
 
-extension on _ClientSort {
-  String get label {
-    switch (this) {
-      case _ClientSort.total:
-        return '总计';
-      case _ClientSort.down:
-        return '下行';
-      case _ClientSort.up:
-        return '上行';
-    }
-  }
-}
-
 class _VpsSectionState extends State<_VpsSection> {
   _ClientSort _sort = _ClientSort.total;
 

@@ -5,6 +5,17 @@ package collector
 
 import "time"
 
+// Report is the JSON-serialised snapshot returned by /api/report. The
+// fields mirror the Flutter client's AgentData model — keep them in sync
+// when adding new sections.
+type Report struct {
+	AgentName string                   `json:"agent_name"`
+	Timestamp int64                    `json:"timestamp"`
+	Hardware  map[string]interface{}   `json:"hardware"`
+	XUI       map[string]interface{}   `json:"xui,omitempty"`
+	Services  []map[string]interface{} `json:"services,omitempty"`
+}
+
 // ServiceNames is the default list of systemd services we report on.
 var ServiceNames = []string{
 	"x-ui",

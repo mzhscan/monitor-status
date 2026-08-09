@@ -16,7 +16,6 @@
 
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'api.dart';
 import 'errors.dart';
 import 'models.dart';
 import 'store.dart';
@@ -32,7 +31,6 @@ class AddServerDialog extends StatefulWidget {
     MonitorStore store, {
     MonitorServer? initial,
   }) {
-    final isEdit = initial != null;
     return showDialog<MonitorServer>(
       context: context,
       barrierColor: const Color(0x66000000),
@@ -60,12 +58,9 @@ class _AddServerDialogState extends State<AddServerDialog> {
 
   bool get _isEdit => widget.initial != null;
 
-  @override
-  void initState() {
-    super.initState();
-    // 编辑模式下不预填 token（用户得主动重输，密码字段）
-    if (_isEdit) _tokenCtrl.text = '';
-  }
+  // 编辑模式下保留旧 token（默认 _obscureToken=true 隐藏，点眼睛显示）。
+  // 只想改名字/端口的用户不用再输一遍长 token；想改 token 的就改。
+  // 如果旧 token 为空（首次添加后 token 损坏等），validator 仍然要求填。
 
   @override
   void dispose() {
@@ -198,7 +193,7 @@ class _AddServerDialogState extends State<AddServerDialog> {
         timeout: const Duration(seconds: 5),
         onBadCertificate: (_) => true,
       );
-      final cert = await sock.peerCertificate;
+      final cert = sock.peerCertificate;
       sock.destroy();
       if (cert == null) return null;
       return TrustedCerts.fingerprint(cert);
@@ -346,22 +341,38 @@ class _AddServerDialogState extends State<AddServerDialog> {
                     ),
                     onPressed: () => setState(() => _obscureToken = !_obscureToken),
                   ),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? '必填' : null,
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) {
+                      // 编辑模式：旧 token 还存在 → 允许空（保留旧值）
+                      // 新增模式 / 旧 token 为空 → 必填
+                      final hasOld = _isEdit &&
+                          (widget.store.tokenFor(widget.initial!.id) ?? '').isNotEmpty;
+                      return hasOld ? null : '必填';
+                    }
+                    return null;
+                  },
                 ),
                 const SizedBox(height: 10),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF0F5),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '实际地址：$_fullUrl',
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 11,
-                      color: Color(0xFF1A1A1A),
+                // URL 预览：只听 host/port 两个 controller，避免每个 keystroke
+                // 重建整个 dialog。_https 切换时由外层 setState 顺带刷新。
+                // ValueListenableBuilder 强类型签名要 ValueListenable，这里用
+                // AnimatedBuilder + Listenable.merge 来合并多个 controller。
+                AnimatedBuilder(
+                  animation: Listenable.merge([_hostCtrl, _portCtrl]),
+                  builder: (context, _) => Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF0F5),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '实际地址：$_fullUrl',
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        color: Color(0xFF1A1A1A),
+                      ),
                     ),
                   ),
                 ),
@@ -530,7 +541,9 @@ class _AddServerDialogState extends State<AddServerDialog> {
       keyboardType: keyboardType,
       validator: validator,
       style: const TextStyle(fontSize: 14, color: Color(0xFF1A1A1A)),
-      onChanged: (_) => setState(() {}), // 刷新 URL 预览
+      // Bug fix: 之前每个 keystroke 都 setState 整个 dialog，5 个 input 都要重建。
+      // 现在 URL 预览用 ValueListenableBuilder 单独监听这两个 controller，
+      // 协议切换时 setState（只影响 toggle 的高亮，不需要每个 input 重画）。
       decoration: InputDecoration(
         isDense: true,
         hintText: hint,

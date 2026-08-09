@@ -6,7 +6,6 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -154,10 +153,16 @@ class MonitorStore extends ChangeNotifier {
     Map<String, bool>? hidden,
     bool merge = false,
   }) async {
-    final s = _servers.firstWhere(
-      (s) => s.id == id,
-      orElse: () => _servers.first,
-    );
+    // Bug fix: don't fall back to a wrong server if id is missing. Previously
+    // the orElse returned `_servers.first`, so a bad id would silently mutate
+    // the wrong server's config and the function still returned true (write
+    // succeeded but no actual update happened for the requested id).
+    final idx = _servers.indexWhere((s) => s.id == id);
+    if (idx < 0) {
+      debugPrint('updateDiskConfig: server id=$id not found');
+      return false;
+    }
+    final s = _servers[idx];
     final Map<String, String> newAliases = aliases == null
         ? s.diskAliases
         : (merge ? {...s.diskAliases, ...aliases} : aliases);
@@ -168,13 +173,9 @@ class MonitorStore extends ChangeNotifier {
       diskAliases: newAliases,
       hiddenDisks: newHidden,
     );
-    _servers = _servers.map((x) => x.id == id ? updated : x).toList();
+    _servers = [..._servers]..[idx] = updated;
     if (_currentServer?.id == id) _currentServer = updated;
     notifyListeners();
-    // Bug #1 fix: persist disk aliases + hidden state so they survive
-    // app restart (was previously lost on every restart).
-    // v2.4.4: return whether the write actually round-tripped through
-    // SharedPreferences so the UI can toast "已保存" vs "保存失败".
     return await _saveServers(_servers);
   }
 
@@ -430,6 +431,13 @@ class MonitorStore extends ChangeNotifier {
       // to re-add servers.
       debugPrint('Failed to parse persisted server list: $e\n$st');
       _error = '本地服务器配置损坏或被外部修改，已重置为空白。请重新添加服务器。';
+      // Bug fix: clear the "first launch already shown" flag so the
+      // AddServerDialog auto-popup fires again on the next frame, instead
+      // of dropping the user on an empty overview with no guidance.
+      await p.remove('first_launch_shown');
+      // Also nuke the corrupt bytes so we don't keep failing to parse them
+      // on every subsequent launch.
+      await p.remove(_serversKey);
       return const [];
     }
   }

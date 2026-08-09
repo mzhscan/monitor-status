@@ -10,6 +10,9 @@
 //
 // 可选 env:
 //   AGENT_PORT     —— 监听端口，默认 9101
+//   AGENT_BIND     —— 监听地址，默认 "0.0.0.0"（全网卡）。有公网 IP 的机器建议
+//                    改成 "127.0.0.1" 或内网 IP，配合 SSH 隧道或 VPN 给 app 用，
+//                    避免 9101 端口暴露到公网被扫。
 //   USE_TLS        —— "true" 启 HTTPS（默认 true）
 //   CERT_FILE      —— 显式证书路径（覆盖下面的所有自动查找）
 //   KEY_FILE       —— 显式私钥路径
@@ -42,6 +45,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -54,6 +58,7 @@ type Config struct {
 	AgentName       string
 	AgentToken      string
 	Port            string
+	Bind            string
 	UseTLS          bool
 	CertFile        string
 	KeyFile         string
@@ -67,6 +72,9 @@ func loadConfig() Config {
 		AgentName:       getenv("AGENT_NAME", "agent"),
 		AgentToken:      os.Getenv("AGENT_TOKEN"),
 		Port:            getenv("AGENT_PORT", "9101"),
+		// 默认监听全网卡以兼容 LAN/公网访问。有公网 IP 的机器把 AGENT_BIND
+		// 改成 "127.0.0.1" 或 "内网IP"，避免 9101 端口被全网扫描。
+		Bind:            getenv("AGENT_BIND", "0.0.0.0"),
 		UseTLS:          getenv("USE_TLS", "true") == "true", // 默认启 HTTPS
 		XUIDBPath:       getenv("XUI_DB_PATH", "/etc/x-ui/x-ui.db"),
 		Traffic72hFile:  getenv("TRAFFIC_72H_FILE", "/opt/server-monitor/data/traffic_72h.json"),
@@ -199,6 +207,36 @@ func generateSelfSignedCert(certPath, keyPath string) error {
 	notBefore := time.Now()
 	notAfter := notBefore.Add(10 * 365 * 24 * time.Hour) // 10 年
 
+	// Bug fix: previous SAN only contained 127.0.0.1 / ::1 / localhost, so
+	// any real client connecting via the server's public IP got
+	// "Hostname mismatch" and the Flutter app had to fall back to the
+	// issuer-string workaround in api.dart. With proper SANs the cert
+	// verifies cleanly without that bypass.
+	//
+	// User controls which SANs are added via env vars:
+	//   AGENT_IPS       — comma-separated IPs, e.g. "1.2.3.4,10.0.0.1"
+	//   AGENT_HOSTNAMES — comma-separated DNS names, e.g. "node1.example.com"
+	// If neither is set, fall back to localhost only (development use).
+	ips := []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")}
+	for _, s := range strings.Split(os.Getenv("AGENT_IPS"), ",") {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if ip := net.ParseIP(s); ip != nil {
+			ips = append(ips, ip)
+		} else {
+			log.Printf("⚠️  AGENT_IPS: 跳过无效 IP %q", s)
+		}
+	}
+	dnsNames := []string{"localhost"}
+	for _, s := range strings.Split(os.Getenv("AGENT_HOSTNAMES"), ",") {
+		s = strings.TrimSpace(s)
+		if s != "" {
+			dnsNames = append(dnsNames, s)
+		}
+	}
+
 	template := x509.Certificate{
 		SerialNumber: serial,
 		Subject: pkix.Name{
@@ -210,8 +248,8 @@ func generateSelfSignedCert(certPath, keyPath string) error {
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
-		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")},
-		DNSNames:              []string{"localhost"},
+		IPAddresses:           ips,
+		DNSNames:              dnsNames,
 	}
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
@@ -291,7 +329,7 @@ func main() {
 	})
 
 	srv := &http.Server{
-		Addr:    ":" + cfg.Port,
+		Addr:    cfg.Bind + ":" + cfg.Port,
 		Handler: mux,
 	}
 	if cfg.UseTLS && cfg.CertFile != "" && cfg.KeyFile != "" {
