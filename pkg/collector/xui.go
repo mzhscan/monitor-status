@@ -3,8 +3,6 @@ package collector
 import (
 	"database/sql"
 	"fmt"
-	"io/ioutil"
-	"os"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -41,19 +39,16 @@ func CollectXUI(dbPath string) (map[string]interface{}, error) {
 		return nil, fmt.Errorf("x-ui 数据库不存在: %s", dbPath)
 	}
 
-	// 拷贝数据库避免锁
-	tmpDB := fmt.Sprintf("/tmp/xui-collect-%d.db", time.Now().UnixNano())
-	defer os.Remove(tmpDB)
-
-	data, err := ioutil.ReadFile(dbPath)
-	if err != nil {
-		return nil, err
-	}
-	if err := ioutil.WriteFile(tmpDB, data, 0644); err != nil {
-		return nil, err
-	}
-
-	db, err := sql.Open("sqlite", "file:"+tmpDB+"?mode=ro&immutable=1")
+	// v2.4.21: 直接 read-only open 真实 db path，不再 cp 一份。
+	// 之前 `cp .db` 的 bug：3x-ui 用 WAL 模式写数据（client_traffics + inbounds
+	// 实时更新），4MB 数据全在 .db-wal 里，main .db 还是 5 分钟前那个版本。
+	// cp 只复制 main .db，永远读不到 WAL 里的最新数据。
+	// 现在用 `mode=ro&immutable=1&_journal_mode=WAL`：
+	//   - mode=ro + immutable=1 → SQLite 不会写，不会跟 3x-ui 写冲突
+	//   - _journal_mode=WAL → 读 -wal 文件合并数据，看到完整最新状态
+	// 注意：必须 3 个文件都存在且能 read（x-ui.db + x-ui.db-shm + x-ui.db-wal），
+	// 3x-ui 自身保证这三个文件在同一目录且权限一致。
+	db, err := sql.Open("sqlite", "file:"+dbPath+"?mode=ro&immutable=1&_journal_mode=WAL&_query_only=true")
 	if err != nil {
 		return nil, err
 	}
