@@ -36,6 +36,9 @@ CERT_FILE=""
 KEY_FILE=""
 BINARY_PATH=""
 USE_TLS=1
+# 用 NO_TLS_FLAG 区分「用户传了 --no-tls 跳过 prompt」和「用户在 interactive 里
+# 选了 n」。前者直接走 HTTP 不问，后者提示默认 Y 但用户可改。
+NO_TLS_FLAG=0
 
 # ===== 参数解析 =====
 while [[ $# -gt 0 ]]; do
@@ -47,7 +50,7 @@ while [[ $# -gt 0 ]]; do
     --cert)    CERT_FILE="$2"; shift 2 ;;
     --key)     KEY_FILE="$2"; shift 2 ;;
     --binary)  BINARY_PATH="$2"; shift 2 ;;
-    --no-tls)  USE_TLS=0; shift ;;
+    --no-tls)  USE_TLS=0; NO_TLS_FLAG=1; shift ;;
     -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
     *) echo "未知参数: $1" >&2; exit 1 ;;
   esac
@@ -201,29 +204,43 @@ if [[ -z "$PORT" || "$PORT" == "9101" ]] && [[ "${1:-}" != "--port" ]]; then
   prompt_line "监听端口" PORT "9101"
 fi
 
-# ===== HTTPS 证书来源 =====
-echo ""
-echo "📜 HTTPS 证书（选 1/2/3）："
-echo "   1) 自动检测（trim OS / 3x-ui cert / 自签）  [推荐]"
-echo "   2) 我自己提供证书文件路径"
-if [[ $USE_TLS -eq 1 && -z "$CERT_FILE" ]]; then
+# ===== 是否启用 HTTPS =====
+# 自动化跑（传了 --no-tls）时直接走 HTTP 不问；interactive 跑时问用户，
+# 默认 Y（更安全）。用户在 prompt 里输 n/y 都行。
+if [[ $NO_TLS_FLAG -eq 0 ]]; then
   require_interactive
-  prompt_line "选择" CERT_CHOICE "1"
-  if [[ "$CERT_CHOICE" == "2" ]]; then
-    while [[ -z "$CERT_FILE" || ! -f "$CERT_FILE" ]]; do
-      prompt_line "证书文件路径" CERT_FILE
-      if [[ -n "$CERT_FILE" && ! -f "$CERT_FILE" ]]; then
-        echo "❌ 文件不存在: $CERT_FILE" >&2
-        CERT_FILE=""
-      fi
-    done
-    while [[ -z "$KEY_FILE" || ! -f "$KEY_FILE" ]]; do
-      prompt_line "私钥文件路径" KEY_FILE
-      if [[ -n "$KEY_FILE" && ! -f "$KEY_FILE" ]]; then
-        echo "❌ 文件不存在: $KEY_FILE" >&2
-        KEY_FILE=""
-      fi
-    done
+  prompt_line "是否启用 HTTPS？(Y/n) [公网推荐 Y；纯内网/VPN/SSH 隧道可以 n]" TLS_CHOICE "y"
+  case "${TLS_CHOICE,,}" in
+    n|no|否|0) USE_TLS=0 ;;
+    *)         USE_TLS=1 ;;
+  esac
+fi
+
+# ===== HTTPS 证书来源（仅 USE_TLS=1 时问）=====
+if [[ $USE_TLS -eq 1 ]]; then
+  echo ""
+  echo "📜 HTTPS 证书（选 1/2/3）："
+  echo "   1) 自动检测（trim OS / 3x-ui cert / 自签）  [推荐]"
+  echo "   2) 我自己提供证书文件路径"
+  if [[ -z "$CERT_FILE" ]]; then
+    require_interactive
+    prompt_line "选择" CERT_CHOICE "1"
+    if [[ "$CERT_CHOICE" == "2" ]]; then
+      while [[ -z "$CERT_FILE" || ! -f "$CERT_FILE" ]]; do
+        prompt_line "证书文件路径" CERT_FILE
+        if [[ -n "$CERT_FILE" && ! -f "$CERT_FILE" ]]; then
+          echo "❌ 文件不存在: $CERT_FILE" >&2
+          CERT_FILE=""
+        fi
+      done
+      while [[ -z "$KEY_FILE" || ! -f "$KEY_FILE" ]]; do
+        prompt_line "私钥文件路径" KEY_FILE
+        if [[ -n "$KEY_FILE" && ! -f "$KEY_FILE" ]]; then
+          echo "❌ 文件不存在: $KEY_FILE" >&2
+          KEY_FILE=""
+        fi
+      done
+    fi
   fi
 fi
 
