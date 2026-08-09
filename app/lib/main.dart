@@ -36,14 +36,17 @@ class _MonitorAppState extends State<MonitorApp> {
 
   /// 双击返回退出：第一次按提示「再按一次回到桌面」(toast)，2 秒内再按才真退出。
   /// v2.4.3: 仅在总览页生效；详情页按下时直接 selectOverview() 回总览。
-  bool _handleBack() {
+  /// v2.4.5: 接收 [ctx] 参数，因为 build() 的 context 是 State 的 context，
+  /// 它的位置在 MaterialApp 之上，找不到 MaterialApp 内部的 rootOverlay。
+  /// 调用方需要从 home: 里的 Builder 取一个 innerContext 传进来。
+  bool _handleBack(BuildContext ctx) {
     final now = DateTime.now();
     if (_lastBack != null &&
         now.difference(_lastBack!).inMilliseconds < 2000) {
       return true; // 允许退出
     }
     _lastBack = now;
-    AppToast.show(context, '再按一次返回桌面');
+    AppToast.show(ctx, '再按一次返回桌面');
     return false; // 阻止退出
   }
 
@@ -121,24 +124,32 @@ class _MonitorAppState extends State<MonitorApp> {
     // v2.4.4 fix: PopScope 必须包在 home route 里面才能拦到那个 route 的
     // 返回手势。之前放在 MaterialApp 外层是 NO-OP，home route 没有任何
     // PopScope 祖先 → 用户按返回直接弹 home route = 退到桌面。
+    //
+    // v2.4.5 fix: 用 Builder 包一层拿一个"在 home route 内部"的 context。
+    // 之前 build() 的 context 是 State 的 element 的 context，位置在
+    // MaterialApp 之上 → 找不到 MaterialApp 内部的 rootOverlay
+    // (Overlay.maybeOf 返回 null，AppToast 静默 drop)。Builder 的
+    // context 已经在 route 内部，Overlay / Navigator 都能正常找到。
     home: StoreScope(
       store: _store,
-      child: PopScope(
-        canPop: false,
-        onPopInvokedWithResult: (didPop, _) {
-          if (didPop) return;
-          // 详情页 → 按返回回总览页
-          if (!_store.isOverview) {
-            _store.selectOverview();
-            return;
-          }
-          // 总览页 → 双击退
-          if (_handleBack()) {
-            // 第二次按了 → 真退出
-            Navigator.of(context).pop();
-          }
-        },
-        child: const HomePage(),
+      child: Builder(
+        builder: (innerContext) => PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (didPop) return;
+            // 详情页 → 按返回回总览页
+            if (!_store.isOverview) {
+              _store.selectOverview();
+              return;
+            }
+            // 总览页 → 双击退
+            if (_handleBack(innerContext)) {
+              // 第二次按了 → 真退出
+              Navigator.of(innerContext).pop();
+            }
+          },
+          child: const HomePage(),
+        ),
       ),
     ),
     );
