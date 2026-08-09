@@ -31,7 +31,14 @@ class DynamicServerPage extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
         children: [
-          _Header(server: server, agent: agent),
+          _Header(
+            server: server,
+            agent: agent,
+            // v2.4.22: 用 app 端 lastSuccessMs 算 status。
+            // 详情页用 store.lastSuccessFor(server) → millisecondsSinceEpoch，
+            // 跟总览页保持同一个数据源。
+            lastSuccessMs: store.lastSuccessFor(server)?.millisecondsSinceEpoch,
+          ),
           const SizedBox(height: 10),
           if (agent == null) _loadingCard() else ..._buildBody(agent),
           const SizedBox(height: 8),
@@ -129,12 +136,16 @@ class DynamicServerPage extends StatelessWidget {
 class _Header extends StatelessWidget {
   final MonitorServer server;
   final AgentData? agent;
-  const _Header({required this.server, required this.agent});
+  // v2.4.22: 用 app 端 lastSuccessMs 算 status（不再信 agent.ts，那是采集时刻
+  // 不是数据新鲜度）。
+  final int? lastSuccessMs;
+  const _Header({required this.server, required this.agent, this.lastSuccessMs});
 
   @override
   Widget build(BuildContext context) {
     final isVps = agent?.isVps ?? false;
-    final online = agent?.isLive ?? false;
+    // v2.4.22: 移除了 `online` 变量 —— 状态现在由 _StatusBadge(lastSuccessMs)
+    // 算，原来的 agent.isLive 已经不准了（agent.ts ≠ 数据新鲜度）。
     return GlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -176,7 +187,7 @@ class _Header extends StatelessWidget {
                   ],
                 ),
               ),
-              _StatusBadge(online: online, secondsAgo: agent?.secondsAgo ?? -1),
+              _StatusBadge(lastSuccessMs: lastSuccessMs),
             ],
           ),
           const SizedBox(height: 12),
@@ -205,19 +216,31 @@ class _Header extends StatelessWidget {
 }
 
 class _StatusBadge extends StatelessWidget {
-  final bool online;
-  final int secondsAgo;
-  const _StatusBadge({required this.online, required this.secondsAgo});
+  // v2.4.22: 跟总览页 StatusBadge 统一接口，改用 lastSuccessMs（app 端 poll
+  // 成功时间）算状态。原来的 online/secondsAgo 来源于 agent.ts，那是采集
+  // 时刻（time.Now()），跟 app 是否连得上无关 —— 所以 agent 挂了 app 也
+  // 看到"5 秒前"，永远显示在线。
+  final int? lastSuccessMs;
+  const _StatusBadge({required this.lastSuccessMs});
 
   @override
   Widget build(BuildContext context) {
     String label;
     Color color;
-    if (online) {
+    int sa;
+    if (lastSuccessMs == null || lastSuccessMs == 0) {
+      sa = -1;
+    } else {
+      sa = ((DateTime.now().millisecondsSinceEpoch - lastSuccessMs!) / 1000).round();
+    }
+    if (lastSuccessMs == null || lastSuccessMs == 0) {
+      label = '加载中';
+      color = const Color(0xFF9CA3AF);
+    } else if (sa < 30) {
       label = '在线';
       color = const Color(0xFF10B981);
-    } else if (secondsAgo >= 0 && secondsAgo < 300) {
-      label = '卡顿 ${secondsAgo}s';
+    } else if (sa < 300) {
+      label = '卡 ${sa}s';
       color = const Color(0xFFF59E0B);
     } else {
       label = '离线';
@@ -376,6 +399,10 @@ class _HardwareSummaryCard extends StatelessWidget {
     );
   }
 
+  // v2.4.22: hint 跟 value 同一行（右侧），不再换行到下面。
+  // 之前用 Column 把 hint 塞 value 下面，导致「网络」行比其他行高出一截，
+  // 跟 CPU/内存/显卡/硬盘 排在一起视觉上不齐。
+  // 现在：value 占左侧 Expanded，hint 紧跟右侧，整体一行就完事。
   Widget _kv(String k, String v, {String? hint}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
@@ -386,17 +413,15 @@ class _HardwareSummaryCard extends StatelessWidget {
               child: Text(k, style: const TextStyle(color: Color(0xFF7A7A82), fontSize: 12)),
             ),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(v, style: const TextStyle(color: Color(0xFF1A1A1A), fontSize: 12.5)),
-                  if (hint != null) ...[
-                    const SizedBox(height: 1),
-                    Text(hint, style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 10.5)),
-                  ],
-                ],
-              ),
+              child: Text(v, style: const TextStyle(color: Color(0xFF1A1A1A), fontSize: 12.5)),
             ),
+            if (hint != null) ...[
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(top: 1),
+                child: Text(hint, style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 10.5)),
+              ),
+            ],
           ],
         ),
       );
@@ -1435,7 +1460,8 @@ class _VpsSectionState extends State<_VpsSection> {
                   icon: Icons.south_rounded,
                   label: '下行',
                   value: _VpsSection.fmtGb(xui.totalDownGb),
-                  color: const Color(0xFF10B981),
+                  // v2.4.22: 下行色块从绿色（跟"在线"同色）改成蓝色，跟 VPS tag 一致。
+                  color: const Color(0xFF4F8EF7),
                 ),
               ),
               const SizedBox(width: 8),
@@ -1494,30 +1520,6 @@ class _VpsSectionState extends State<_VpsSection> {
     final d = DateTime.fromMillisecondsSinceEpoch(sec * 1000).toLocal();
     return '${d.hour.toString().padLeft(2, "0")}:${d.minute.toString().padLeft(2, "0")}:${d.second.toString().padLeft(2, "0")}';
   }
-
-  List<XuiClient> _sortedClients(List<XuiClient> clients) {
-    final sorted = List<XuiClient>.from(clients);
-    sorted.sort((a, b) {
-      double va, vb;
-      switch (_sort) {
-        case _ClientSort.down:
-          va = a.downGb;
-          vb = b.downGb;
-          break;
-        case _ClientSort.up:
-          va = a.upGb;
-          vb = b.upGb;
-          break;
-        case _ClientSort.total:
-          va = a.totalGb;
-          vb = b.totalGb;
-          break;
-      }
-      return vb.compareTo(va); // descending
-    });
-    return sorted;
-  }
-}
 
   List<XuiClient> _sortedClients(List<XuiClient> clients) {
     final sorted = List<XuiClient>.from(clients);
@@ -1626,7 +1628,6 @@ class _RealTimeTotalCard extends StatelessWidget {
       ),
     );
   }
-}
 }
 
 class _InboundRow extends StatelessWidget {
@@ -1788,7 +1789,8 @@ class _ClientRow extends StatelessWidget {
             child: Text(
               _VpsSection.fmtGb(c.downGb),
               textAlign: TextAlign.right,
-              style: const TextStyle(fontSize: 11, color: Color(0xFF10B981)),
+              // v2.4.22: 下行色从绿色（跟"在线"色块同色）改成蓝色，跟 VPS tag 一致。
+              style: const TextStyle(fontSize: 11, color: Color(0xFF4F8EF7)),
             ),
           ),
           SizedBox(

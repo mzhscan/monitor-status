@@ -476,7 +476,14 @@ class _ServerCard extends StatelessWidget {
                   style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A)),
                 ),
               ),
-              StatusBadge(agent: agent),
+              StatusBadge(
+                agent: agent,
+                // v2.4.22: 传 lastSuccessMs 进去让 StatusBadge 算 sa。
+                // 之前用 agent.secondsAgo（agent.ts = time.Now()），永远 < 30s，
+                // 所以 app 完全连不上 agent 时还显示"在线"。现在用 app 端
+                // 上次 poll 成功时间，失败时不更新，自然就显示"卡 Xs/离线"了。
+                lastSuccessMs: store.lastSuccessFor(server)?.millisecondsSinceEpoch,
+              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -765,16 +772,30 @@ class _MiniStat extends StatelessWidget {
 
 class StatusBadge extends StatelessWidget {
   final AgentData? agent;
-  const StatusBadge({super.key, required this.agent});
+  final int? lastSuccessMs; // v2.4.22: 用 store 的 lastSuccessMs 算 secondsAgo（不再用 agent.ts）
+  const StatusBadge({super.key, required this.agent, this.lastSuccessMs});
   @override
   Widget build(BuildContext context) {
     String label;
     Color color;
-    final sa = agent?.secondsAgo ?? -1;
-    if (agent?.isLive == true) {
+    // v2.4.22: 用 lastSuccessMs 算 secondsAgo（app 上次成功 poll 距今多久）。
+    // 之前用 agent.secondsAgo（基于 agent 返回的 timestamp = time.Now().Unix()，
+    // 跟数据实际新鲜度无关，永远 < 30 秒，所以 server 断联几小时都显示"在线"）。
+    // 现在用 store 里的 lastSuccessMs：app poll 成功时更新，失败时不变，
+    // 自然会"卡 X 秒" / "离线"，跟 app 端实际连接状态一致。
+    int sa;
+    if (lastSuccessMs == null || lastSuccessMs == 0) {
+      sa = -1;
+    } else {
+      sa = ((DateTime.now().millisecondsSinceEpoch - lastSuccessMs!) / 1000).round();
+    }
+    if (lastSuccessMs == null || lastSuccessMs == 0) {
+      label = '加载中';
+      color = const Color(0xFF9CA3AF);
+    } else if (sa < 30) {
       label = '在线';
       color = const Color(0xFF10B981);
-    } else if (sa >= 0 && sa < 300) {
+    } else if (sa < 300) {
       label = '卡 ${sa}s';
       color = const Color(0xFFF59E0B);
     } else {
