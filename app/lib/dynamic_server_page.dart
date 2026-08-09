@@ -1449,6 +1449,14 @@ class _VpsSectionState extends State<_VpsSection> {
               ),
             ],
           ),
+          // v2.4.20: 实时总流量（从 inbounds.up/down 累加，xray 秒级刷新）。
+          // 跟上面"下行/上行"（client_traffics 累加，可能陈旧）分开显示。
+          // 上面三块是 per-client 累加，client 在线时数字会卡住；这里是 per-inbound
+          // 实时累加，client 在线时也会持续增长 → user 一眼能看出哪个是真"实时"。
+          if (xui.inboundTotal != null) ...[
+            const SizedBox(height: 10),
+            _RealTimeTotalCard(total: xui.inboundTotal!),
+          ],
           const SizedBox(height: 12),
           if (xui.inbounds.isNotEmpty) ...[
             const Text('入站',
@@ -1468,9 +1476,23 @@ class _VpsSectionState extends State<_VpsSection> {
               _ClientRow(c: sorted[i]),
             ],
           ],
+          // v2.4.20: 数据采集时间 + per-client 数据陈旧度说明
+          if (xui.observedAt > 0) ...[
+            const SizedBox(height: 10),
+            Text(
+              '数据采集于 ${_formatObservedAt(xui.observedAt)} · 客户端流量来自 3x-ui 缓存（断开时更新），实时性看上方面板',
+              style: const TextStyle(fontSize: 10.5, color: Color(0xFF9CA3AF), height: 1.4),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  static String _formatObservedAt(int sec) {
+    if (sec <= 0) return '—';
+    final d = DateTime.fromMillisecondsSinceEpoch(sec * 1000).toLocal();
+    return '${d.hour.toString().padLeft(2, "0")}:${d.minute.toString().padLeft(2, "0")}:${d.second.toString().padLeft(2, "0")}';
   }
 
   List<XuiClient> _sortedClients(List<XuiClient> clients) {
@@ -1495,6 +1517,116 @@ class _VpsSectionState extends State<_VpsSection> {
     });
     return sorted;
   }
+}
+
+  List<XuiClient> _sortedClients(List<XuiClient> clients) {
+    final sorted = List<XuiClient>.from(clients);
+    sorted.sort((a, b) {
+      double va, vb;
+      switch (_sort) {
+        case _ClientSort.down:
+          va = a.downGb;
+          vb = b.downGb;
+          break;
+        case _ClientSort.up:
+          va = a.upGb;
+          vb = b.upGb;
+          break;
+        case _ClientSort.total:
+          va = a.totalGb;
+          vb = b.totalGb;
+          break;
+      }
+      return vb.compareTo(va); // descending
+    });
+    return sorted;
+  }
+}
+
+/// v2.4.20: VPS 主机总流量（实时，从 3x-ui inbounds.up/down 累加，xray 秒级刷新）。
+/// 跟 _VpsSection 顶部"下行/上行"区分：那个是 per-client 累加（client_traffics），
+/// client 在线时数字会卡住；这个是 per-inbound 实时累加，client 在线时也持续增长。
+class _RealTimeTotalCard extends StatelessWidget {
+  final InboundTotal total;
+  const _RealTimeTotalCard({required this.total});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0x1A4F8EF7), Color(0x0D4F8EF7)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0x334F8EF7), width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.flash_on_rounded, size: 14, color: Color(0xFF4F8EF7)),
+              const SizedBox(width: 6),
+              const Text(
+                'VPS 主机总流量（实时）',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF4F8EF7),
+                ),
+              ),
+              const Spacer(),
+              // 右上角小字说明数据源
+              Text(
+                '${total.inboundsCount} 个入口',
+                style: const TextStyle(fontSize: 10, color: Color(0xFF7A7A82)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    const Icon(Icons.south_rounded, size: 14, color: Color(0xFF10B981)),
+                    const SizedBox(width: 4),
+                    Text(
+                      _VpsSection.fmtGb(total.downGb),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Row(
+                  children: [
+                    const Icon(Icons.north_rounded, size: 14, color: Color(0xFFFF6B95)),
+                    const SizedBox(width: 4),
+                    Text(
+                      _VpsSection.fmtGb(total.upGb),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
 }
 
 class _InboundRow extends StatelessWidget {

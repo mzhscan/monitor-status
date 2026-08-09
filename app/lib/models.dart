@@ -395,6 +395,15 @@ class XuiInfo {
   final double totalDownGb;
   final List<XuiClient> clients;
   final List<XuiInbound> inbounds;
+  /// v2.4.20: 3x-ui 的 inbounds 表实时流量（per inbound 累加），
+  /// xray 实时写入，秒级刷新。跟 client_traffics（per-client，陈旧）分开。
+  /// 用来展示"vps 主机总流量（实时）"，让 user 在 client 在线期间能看到流量在涨。
+  /// 旧字段保留兼容（v2.4.19 及之前的 agent 没有这字段 → null）。
+  final InboundTotal? inboundTotal;
+  /// v2.4.20: agent 采集时间戳（unix seconds）。
+  /// app 端用这个显示"per-client 数据于 X 分钟前采集"，让 user 知道这些数字
+  /// 是不是 3x-ui 写 client_traffics 的最新值。
+  final int observedAt;
   /// agent 采集 xui 失败时填的错误信息（v2.4.17+）。null = 采集成功。
   /// 失败时 `clients` / `inbounds` 都是空，但 `xui` 字段本身存在，
   /// 让 app 能区分"没装 3x-ui"（整个 xui 字段缺席 → isNas）和
@@ -407,6 +416,8 @@ class XuiInfo {
     required this.totalDownGb,
     required this.clients,
     required this.inbounds,
+    this.inboundTotal,
+    this.observedAt = 0,
     this.error,
   });
   factory XuiInfo.fromJson(Map<String, dynamic> j) => XuiInfo(
@@ -420,11 +431,43 @@ class XuiInfo {
         inbounds: ((j['inbounds'] as List?) ?? [])
             .map((e) => XuiInbound.fromJson(e as Map<String, dynamic>))
             .toList(),
+        // v2.4.20: 实时总流量（从 inbounds.up/down 累加，秒级刷新）
+        inboundTotal: j['inbound_total'] is Map
+            ? InboundTotal.fromJson(j['inbound_total'] as Map<String, dynamic>)
+            : null,
+        // v2.4.20: agent 采集时间戳
+        observedAt: _i(j['observed_at']),
         // _error 字段：agent 端 CollectXUI 失败时填的字符串。
         // 正常情况下这个字段不存在 → 解析为 null。
         error: (j['_error'] as String?)?.isNotEmpty == true
             ? j['_error'] as String
             : null,
+      );
+}
+
+/// v2.4.20: 3x-ui 所有 enabled inbound 的实时流量累加（xray 实时写入）。
+/// 跟 XuiInfo.totalUpGb/totalDownGb 不同：
+/// - totalUpGb 是 per-client 累加（client_traffics，可能陈旧）
+/// - inboundTotal 是 per-inbound 累加（inbounds.up/down，秒级刷新）
+class InboundTotal {
+  final int upBytes;
+  final int downBytes;
+  final double upGb;
+  final double downGb;
+  final int inboundsCount;
+  const InboundTotal({
+    required this.upBytes,
+    required this.downBytes,
+    required this.upGb,
+    required this.downGb,
+    required this.inboundsCount,
+  });
+  factory InboundTotal.fromJson(Map<String, dynamic> j) => InboundTotal(
+        upBytes: _i(j['up_bytes']),
+        downBytes: _i(j['down_bytes']),
+        upGb: _d(j['up_gb']),
+        downGb: _d(j['down_gb']),
+        inboundsCount: _i(j['inbounds_count']),
       );
 }
 
