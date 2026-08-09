@@ -301,6 +301,20 @@ if systemctl is-active --quiet server-monitor-agent; then
   echo "   env 文件:    $ENV_FILE"
   echo "   日志:         journalctl -u server-monitor-agent -f"
   echo ""
+  # ===== 探测 x-ui，给用户一个明确预期 =====
+  # 同一个 binary 适配 VPS（有 3x-ui）和 NAS（无），这里探测一下告诉用户
+  # 这台机能采集到啥数据。
+  if [[ -f /etc/x-ui/x-ui.db ]]; then
+    echo "🎯 检测到 3x-ui (/etc/x-ui/x-ui.db)"
+    echo "   → app 端会显示：3xui 客户端列表 / 入口流量 / 72h 流量"
+    echo "   → 72h 流量历史文件：$DATA_DIR/data/traffic_72h.json"
+    echo "   → 首次启动 72h 流量为空，需要积累（约 72h 后填满）"
+  else
+    echo "ℹ️  未检测到 3x-ui (/etc/x-ui/x-ui.db 不存在)"
+    echo "   → app 端只会显示：CPU / 内存 / 磁盘 / 网络 / 温度等硬件"
+    echo "   → 之后装上 3x-ui 重跑此脚本即可，不用重装 agent"
+  fi
+  echo ""
   echo "📱 app 端添加服务器："
   echo "   显示名称:    $NAME"
   if [[ $USE_TLS -eq 1 ]]; then

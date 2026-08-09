@@ -17,6 +17,7 @@
 - **APK**：Flutter 客户端，所有数据存本机
 - **Agent**：被监控机器上跑的轻量 HTTP server（一个 binary，~14MB）
 - **不需要后端**：每台机器的 agent 直接对 app 暴露 `/health` + `/api/report`
+- **同一 binary 适配两种场景**：装在 VPS 上会顺带读 `/etc/x-ui/x-ui.db` 采集 3xui 客户端流量 + 72h 流量历史；装在 NAS（无 x-ui）上只采集硬件数据
 
 ## 一键部署 agent
 
