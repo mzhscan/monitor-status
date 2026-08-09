@@ -26,6 +26,7 @@ RELAY_TOKEN=""
 AGENT_NAME=""
 XUI_DB_PATH=""
 PUSH_INTERVAL=""
+RELAY_CERT_FP=""
 BINARY_PATH=""
 
 DATA_DIR="/opt/server-monitor"
@@ -43,6 +44,7 @@ while [[ $# -gt 0 ]]; do
     --name)          AGENT_NAME="$2"; shift 2 ;;
     --xui-db)        XUI_DB_PATH="$2"; shift 2 ;;
     --interval)      PUSH_INTERVAL="$2"; shift 2 ;;
+    --relay-cert-fp) RELAY_CERT_FP="$2"; shift 2 ;;
     --binary)        BINARY_PATH="$2"; shift 2 ;;
     -h|--help)
       sed -n '2,20p' "$0"
@@ -213,6 +215,17 @@ if [[ -z "$XUI_DB_PATH" ]]; then
   fi
 fi
 
+# ===== relay cert 指纹（可选但推荐） =====
+if [[ -z "$RELAY_CERT_FP" ]]; then
+  echo ""
+  echo "🔒 relay cert SHA-256 指纹（**生产环境强烈建议**）"
+  echo "   不传：跳过 cert 校验（自签 cert 场景能跑但不安全）"
+  echo "   传：严格匹配 cert 指纹，relay cert 变了会立刻报错"
+  echo "   怎么拿指纹：在 relay 机器上跑 'openssl x509 -in /opt/server-monitor/relay.crt -noout -fingerprint -sha256'"
+  require_interactive
+  prompt_line "relay cert 指纹（64 字符 hex，留空跳过）" RELAY_CERT_FP ""
+fi
+
 # ===== push 间隔 =====
 if [[ -z "$PUSH_INTERVAL" ]]; then
   echo ""
@@ -230,6 +243,7 @@ echo "   agent 名字:  $AGENT_NAME"
 echo "   token:       ${RELAY_TOKEN:0:8}...（前 8 位）"
 echo "   3x-ui db:    ${XUI_DB_PATH:-（跳过）}"
 echo "   push 间隔:   ${PUSH_INTERVAL}s"
+echo "   cert 指纹:   ${RELAY_CERT_FP:0:32}...（${#RELAY_CERT_FP} 字符）"
 echo "   二进制:      $BIN_DIR/reverse-agent"
 echo "   env:         $ENV_FILE"
 echo ""
@@ -279,6 +293,7 @@ RELAY_TOKEN=$RELAY_TOKEN
 AGENT_NAME=$AGENT_NAME
 XUI_DB_PATH=$XUI_DB_PATH
 PUSH_INTERVAL=${PUSH_INTERVAL}s
+RELAY_CERT_FP=$RELAY_CERT_FP
 EOF
 chmod 600 "$ENV_FILE"
 
@@ -293,7 +308,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=$ENV_FILE
-ExecStart=$BIN_DIR/reverse-agent -relay-url "\$RELAY_URL" -token "\$RELAY_TOKEN" -name "\$AGENT_NAME" -xui-db "\$XUI_DB_PATH" -interval \$PUSH_INTERVAL
+ExecStart=$BIN_DIR/reverse-agent -relay-url "\$RELAY_URL" -token "\$RELAY_TOKEN" -name "\$AGENT_NAME" -xui-db "\$XUI_DB_PATH" -interval \$PUSH_INTERVAL -relay-cert-fp "\$RELAY_CERT_FP"
 Restart=on-failure
 RestartSec=10s
 LimitNOFILE=65536

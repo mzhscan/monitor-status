@@ -24,8 +24,10 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -33,6 +35,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/mzhscan/monitor-status/pkg/collector"
@@ -41,12 +44,13 @@ import (
 // ===== Config =====
 
 var cfg struct {
-	RelayURL     string
-	RelayToken   string
-	AgentName    string
-	XUIDBPath    string
-	PushInterval time.Duration
-	NoTLSVerify  bool
+	RelayURL      string
+	RelayToken    string
+	AgentName     string
+	XUIDBPath     string
+	PushInterval  time.Duration
+	NoTLSVerify   bool
+	RelayCertFP   string // 可选：relay cert SHA-256 指纹，设了则严格匹配
 }
 
 func main() {
@@ -56,6 +60,7 @@ func main() {
 	flag.StringVar(&cfg.XUIDBPath, "xui-db", getenv("XUI_DB_PATH", "/etc/x-ui/x-ui.db"), "3x-ui sqlite 路径，留空跳过")
 	flag.DurationVar(&cfg.PushInterval, "interval", 5*time.Second, "push 间隔")
 	flag.BoolVar(&cfg.NoTLSVerify, "no-tls-verify", false, "跳过 cert 校验（仅调试）")
+	flag.StringVar(&cfg.RelayCertFP, "relay-cert-fp", getenv("RELAY_CERT_FP", ""), "relay cert SHA-256 指纹（hex，64 字符）。设了则严格匹配。**生产环境强烈建议**")
 	flag.Parse()
 
 	if cfg.RelayURL == "" || cfg.RelayToken == "" || cfg.AgentName == "" {
@@ -104,9 +109,36 @@ func main() {
 func newHTTPClient() *http.Client {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: cfg.NoTLSVerify, // 默认严格校验，--no-tls-verify 才跳过
+			// 三档安全：
+			//   - 传了 --relay-cert-fp：精确匹配 cert 指纹（最严）
+			//   - 传了 --no-tls-verify：完全跳过（仅调试）
+			//   - 都没传：跳过校验 + log 警告一次（自签 cert 场景下默认行为）
+			InsecureSkipVerify: cfg.NoTLSVerify || cfg.RelayCertFP == "",
 			MinVersion:         tls.VersionTLS12,
 		},
+	}
+	if cfg.RelayCertFP != "" {
+		// 严格模式：VerifyPeerCertificate 而非 VerifyConnection（更灵活）
+		expected, err := hex.DecodeString(strings.ReplaceAll(cfg.RelayCertFP, ":", ""))
+		if err != nil || len(expected) != sha256.Size {
+			log.Fatalf("❌ --relay-cert-fp 不是有效的 SHA-256 hex（需要 64 字符 hex 或带 : 分隔）")
+		}
+		tr.TLSClientConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+			if len(rawCerts) == 0 {
+				return fmt.Errorf("server 没给证书")
+			}
+			// 计算 leaf cert 的 SHA-256，跟 expected 对比（常量时间）
+			sum := sha256.Sum256(rawCerts[0])
+			if subtleConstEq(sum[:], expected) != 1 {
+				return fmt.Errorf("relay cert 指纹不匹配：\n  期望: %s\n  实际: %s", cfg.RelayCertFP, hex.EncodeToString(sum[:]))
+			}
+			log.Printf("🔒 relay cert 指纹匹配: %s", hex.EncodeToString(sum[:])[:32]+"...")
+			return nil
+		}
+		// 把 InsecureSkipVerify 关掉才能让 VerifyPeerCertificate 跑
+		tr.TLSClientConfig.InsecureSkipVerify = false
+	} else if !cfg.NoTLSVerify {
+		log.Printf("⚠️  cert 校验跳过（自签 cert 场景）。生产环境建议传 --relay-cert-fp 严格匹配")
 	}
 	return &http.Client{
 		Timeout:   15 * time.Second,
@@ -114,8 +146,23 @@ func newHTTPClient() *http.Client {
 	}
 }
 
+func subtleConstEq(a, b []byte) int {
+	if len(a) != len(b) {
+		return 0
+	}
+	var v byte
+	for i := range a {
+		v |= a[i] ^ b[i]
+	}
+	if v == 0 {
+		return 1
+	}
+	return 0
+}
+
 func pingRelay(client *http.Client) error {
-	resp, err := client.Get(cfg.RelayURL + "/health")
+	url := strings.TrimRight(cfg.RelayURL, "/") + "/health"
+	resp, err := client.Get(url)
 	if err != nil {
 		return err
 	}
