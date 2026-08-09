@@ -1502,11 +1502,13 @@ class _VpsSectionState extends State<_VpsSection> {
               _ClientRow(c: sorted[i]),
             ],
           ],
-          // v2.4.20: 数据采集时间 + per-client 数据陈旧度说明
+          // v2.4.23: 底部说明 —— 明确两个数据源 + 滞后时长
+          // 3x-ui 客户端流量要断开时才更新，可能滞后 20+ 分钟；
+          // 唯一实时的是上方蓝卡（xray 实时数据）。
           if (xui.observedAt > 0) ...[
             const SizedBox(height: 10),
             Text(
-              '数据采集于 ${_formatObservedAt(xui.observedAt)} · 客户端流量来自 3x-ui 缓存（断开时更新），实时性看上方面板',
+              '数据采集于 ${_formatObservedAt(xui.observedAt)} · 3x-ui 客户端流量需断开时才更新（滞后 20+ 分钟）',
               style: const TextStyle(fontSize: 10.5, color: Color(0xFF9CA3AF), height: 1.4),
             ),
           ],
@@ -1572,7 +1574,7 @@ class _RealTimeTotalCard extends StatelessWidget {
               const Icon(Icons.flash_on_rounded, size: 14, color: Color(0xFF4F8EF7)),
               const SizedBox(width: 6),
               const Text(
-                'VPS 主机总流量（实时）',
+                'VPS 主机总流量',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
