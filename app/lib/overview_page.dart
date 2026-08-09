@@ -1,8 +1,13 @@
 // Overview page: one glass card per registered server, plus a "add another"
 // hint if the list is empty. Tapping a card navigates to that server's
-// detail page. Long-pressing a card opens a context menu. Dragging the
-// right-side drag handle reorders the list (hand-rolled in v2.4.0 to
-// avoid the ReorderableListView gray-area bug).
+// detail page. Long-pressing a card opens a context menu.
+//
+// Reorder flow (v2.4.1, iOS-Home-Screen style): the menu has a "排序" entry
+// that puts every card into a wiggle / shake animation and re-binds the
+// card-wide long-press to drag-to-reorder (the menu is suppressed in that
+// mode). A "完成" banner at the top of the list exits the mode.
+
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'add_server_dialog.dart';
@@ -37,6 +42,12 @@ class _OverviewPageState extends State<OverviewPage> {
   // GlobalKey on the Stack (so we can convert screen-global <-> Stack-local
   // coordinates for the floating card and drop indicator).
   final GlobalKey _stackKey = GlobalKey();
+
+  // ----- Sort mode (v2.4.1, iOS-Home-Screen style edit mode) -----
+  // Entered from the card's long-press menu ("排序" entry). While in sort
+  // mode every non-dragging card wiggles (±0.7° rotation, ~300ms period) and
+  // the card-wide long-press re-binds from "open menu" to "start drag".
+  bool _isSortMode = false;
 
   // ----- Public API preserved -----
   MonitorStore get store => widget.store;
@@ -94,6 +105,8 @@ class _OverviewPageState extends State<OverviewPage> {
                 ],
               ),
             ),
+          // 排序模式 banner：iOS 主屏编辑风格的"完成"条。仅在 sort mode 时显示。
+          if (_isSortMode) _buildSortModeBanner(),
           for (int i = 0; i < store.orderedServers.length; i++)
             _buildCardSlot(i),
           const SizedBox(height: 8),
@@ -115,7 +128,7 @@ class _OverviewPageState extends State<OverviewPage> {
     // Allocate a GlobalKey for this card on first render; reused on rebuilds.
     _cardKeys.putIfAbsent(server.id, () => GlobalKey());
     final isDragging = _draggingIndex == i;
-    return Padding(
+    final slot = Padding(
       key: ValueKey('slot-${server.id}'),
       padding: const EdgeInsets.only(bottom: 10),
       // Ghost effect on the source card so user can see what's being moved.
@@ -128,10 +141,56 @@ class _OverviewPageState extends State<OverviewPage> {
           server: server,
           store: store,
           isFloating: false,
+          isSortMode: _isSortMode,
+          onEnterSortMode: _enterSortMode,
           onDragStart: (fingerGlobal) => _onCardDragStart(i, fingerGlobal),
           onDragUpdate: _onCardDragUpdate,
           onDragEnd: _onCardDragEnd,
         ),
+      ),
+    );
+    // 排序模式下：非正在拖的卡都套上 iOS 抖动动画。被拖的那张不抖（避免和悬浮预览打架）
+    if (_isSortMode && !isDragging) {
+      return _ShakeAnimation(enabled: true, child: slot);
+    }
+    return slot;
+  }
+
+  Widget _buildSortModeBanner() {
+    return Container(
+      key: const ValueKey('sort-mode-banner'),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF0F4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0x55FF6B95), width: 0.8),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.swap_vert_rounded, size: 18, color: Color(0xFFFF6B95)),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              '排序模式：长按卡片拖动调整顺序',
+              style: TextStyle(
+                color: Color(0xFF8B1A1A),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          FilledButton(
+            onPressed: _exitSortMode,
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFFF6B95),
+              minimumSize: const Size(60, 32),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('完成', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+          ),
+        ],
       ),
     );
   }
@@ -173,6 +232,25 @@ class _OverviewPageState extends State<OverviewPage> {
       store.reorderServers(_draggingIndex!, _hoverIndex!);
     }
     setState(() {
+      _draggingIndex = null;
+      _dragCardStartGlobal = null;
+      _dragFingerStartGlobal = null;
+      _dragFingerCurrentGlobal = null;
+      _dragCardSize = null;
+      _hoverIndex = null;
+      _hoverLineGlobalY = null;
+    });
+  }
+
+  // ----- Sort-mode entry / exit -----
+  void _enterSortMode() {
+    setState(() => _isSortMode = true);
+  }
+
+  void _exitSortMode() {
+    setState(() {
+      _isSortMode = false;
+      // 防御：如果拖到一半退出，drag 状态一并清掉，避免留下悬浮卡
       _draggingIndex = null;
       _dragCardStartGlobal = null;
       _dragFingerStartGlobal = null;
@@ -303,6 +381,8 @@ class _OverviewPageState extends State<OverviewPage> {
               server: server,
               store: store,
               isFloating: true,
+              isSortMode: false,
+              onEnterSortMode: null,
               onDragStart: _noopDragStart,
               onDragUpdate: _noopDragUpdate,
               onDragEnd: _noopDragEnd,
@@ -374,6 +454,14 @@ class _ServerCard extends StatelessWidget {
   // during a drag. We skip the drag handle, tap, and long-press to keep it
   // purely visual.
   final bool isFloating;
+  // isSortMode = true → the whole overview is in "rearrange" mode. The
+  // GlassCard's InkWell is disabled and the card is wrapped in a
+  // GestureDetector that turns long-press into a drag start.
+  final bool isSortMode;
+  // Optional callback to enter sort mode from this card's long-press menu.
+  // The parent passes null if sort mode shouldn't be offered (e.g. <2
+  // servers, or we are already in sort mode).
+  final VoidCallback? onEnterSortMode;
   final void Function(Offset fingerGlobal) onDragStart;
   final void Function(Offset fingerGlobal) onDragUpdate;
   final VoidCallback onDragEnd;
@@ -383,6 +471,8 @@ class _ServerCard extends StatelessWidget {
     required this.server,
     required this.store,
     required this.isFloating,
+    required this.isSortMode,
+    required this.onEnterSortMode,
     required this.onDragStart,
     required this.onDragUpdate,
     required this.onDragEnd,
@@ -399,9 +489,9 @@ class _ServerCard extends StatelessWidget {
     final temp = cpu?.tempC ?? 0;
     final isVps = agent?.isVps ?? false;
 
-    return GlassCard(
-      onTap: isFloating ? null : () => store.selectServer(server),
-      onLongPress: isFloating ? null : () => _showServerMenu(context),
+    final card = GlassCard(
+      onTap: (isSortMode || isFloating) ? null : () => store.selectServer(server),
+      onLongPress: (isSortMode || isFloating) ? null : () => _showServerMenu(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -422,17 +512,6 @@ class _ServerCard extends StatelessWidget {
                 ),
               ),
               StatusBadge(agent: agent),
-              if (!isFloating) ...[
-                const SizedBox(width: 4),
-                // Drag handle: immediate drag on touch (matches the old
-                // ReorderableDragStartListener feel). Long-press on the
-                // card body still opens the menu — no conflict.
-                _DragHandle(
-                  onDragStart: onDragStart,
-                  onDragUpdate: onDragUpdate,
-                  onDragEnd: onDragEnd,
-                ),
-              ],
             ],
           ),
           const SizedBox(height: 10),
@@ -504,40 +583,99 @@ class _ServerCard extends StatelessWidget {
         ],
       ),
     );
+
+    // v2.4.1 重做：抛弃拖手柄。改成 iOS 主屏编辑风格——
+    // 用户先进 sort mode（菜单 → 排序），所有卡晃动，长按整张卡 = 拖动。
+    // 退出点顶部"完成"banner。
+    if (isFloating) return card;
+    if (isSortMode) {
+      return GestureDetector(
+        // 长按 500ms 后触发拖动（iOS 风格），后续手指移动用 onLongPressMoveUpdate 跟手。
+        // GlassCard 在 sort mode 下禁用 onTap / onLongPress，所以这里没有手势冲突。
+        onLongPressStart: (d) => onDragStart(d.globalPosition),
+        onLongPressMoveUpdate: (d) => onDragUpdate(d.globalPosition),
+        onLongPressEnd: (_) => onDragEnd(),
+        child: card,
+      );
+    }
+    return card;
   }
 
   void _showServerMenu(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => _ServerMenu(store: store, server: server),
+      builder: (ctx) => _ServerMenu(
+        store: store,
+        server: server,
+        onEnterSortMode: onEnterSortMode,
+      ),
     );
   }
 }
 
-// Tiny widget so the GestureDetector wrapping the drag-handle icon doesn't
-// have to fight with the GlassCard's InkWell for pointer events.
-class _DragHandle extends StatelessWidget {
-  final void Function(Offset fingerGlobal) onDragStart;
-  final void Function(Offset fingerGlobal) onDragUpdate;
-  final VoidCallback onDragEnd;
-  const _DragHandle({
-    required this.onDragStart,
-    required this.onDragUpdate,
-    required this.onDragEnd,
-  });
+// v2.4.1 iOS 风格晃动动画：sort mode 下非正在拖的卡片轻微左右摆动。
+// 用 AnimationController.repeat(reverse:true) + sin 波驱动 Transform.rotate，
+// 振幅 ~0.7° 看起来"心虚的动"而不是"卖力的抖"。
+class _ShakeAnimation extends StatefulWidget {
+  final Widget child;
+  final bool enabled;
+  const _ShakeAnimation({required this.child, required this.enabled});
+
+  @override
+  State<_ShakeAnimation> createState() => _ShakeAnimationState();
+}
+
+class _ShakeAnimationState extends State<_ShakeAnimation>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  // 给每张卡一个轻微不同的相位，看起来更自然
+  late final double _phaseOffset;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+    );
+    // 用 widget 自身 hashCode 当相位种子，让每张卡的抖动看起来错开，更自然
+    _phaseOffset = (widget.child.hashCode % 1000) / 1000.0 * 2 * math.pi;
+    _syncAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ShakeAnimation old) {
+    super.didUpdateWidget(old);
+    if (widget.enabled != old.enabled) _syncAnimation();
+  }
+
+  void _syncAnimation() {
+    if (widget.enabled) {
+      _ctrl.repeat(reverse: true);
+    } else {
+      _ctrl.stop();
+      _ctrl.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onPanStart: (d) => onDragStart(d.globalPosition),
-      onPanUpdate: (d) => onDragUpdate(d.globalPosition),
-      onPanEnd: (_) => onDragEnd(),
-      child: const Padding(
-        padding: EdgeInsets.all(4),
-        child: Icon(Icons.drag_indicator_rounded, size: 20, color: Color(0xFFB5B5BD)),
-      ),
+    if (!widget.enabled) return widget.child;
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, child) {
+        final angle =
+            math.sin((_ctrl.value * 2 * math.pi) + _phaseOffset) * 0.012;
+        return Transform.rotate(angle: angle, child: child);
+      },
+      child: widget.child,
     );
   }
 }
@@ -545,7 +683,14 @@ class _DragHandle extends StatelessWidget {
 class _ServerMenu extends StatelessWidget {
   final MonitorStore store;
   final MonitorServer server;
-  const _ServerMenu({required this.store, required this.server});
+  // Optional callback to enter sort mode. The parent passes null when sort
+  // mode isn't available (e.g. <2 servers) and the entry is hidden.
+  final VoidCallback? onEnterSortMode;
+  const _ServerMenu({
+    required this.store,
+    required this.server,
+    this.onEnterSortMode,
+  });
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -570,6 +715,18 @@ class _ServerMenu extends StatelessWidget {
               borderRadius: BorderRadius.circular(2),
             ),
           ),
+          // 排序入口：iOS 主屏编辑模式那种。点完进入 sort mode（卡片晃动 + 长按=拖动）
+          if (onEnterSortMode != null)
+            ListTile(
+              leading: const Icon(Icons.swap_vert_rounded, color: Color(0xFFFF6B95)),
+              title: const Text('排序'),
+              subtitle: const Text('卡片晃动后，长按拖动调整顺序',
+                  style: TextStyle(fontSize: 11, color: Color(0xFF7A7A82))),
+              onTap: () {
+                Navigator.pop(context);
+                onEnterSortMode!();
+              },
+            ),
           ListTile(
             leading: const Icon(Icons.open_in_new_rounded, color: Color(0xFFFF6B95)),
             title: const Text('查看详情'),
