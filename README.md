@@ -54,7 +54,7 @@ v2.4.24+ 新增了 **relay + reverse-agent** 模式，让家里树莓派 / 内�
 
 详细部署文档：[relay/README.md](relay/README.md)
 
-**一键命令（脚本会一步步引导你填）**：
+#### 初次安装（一行命令 + 脚本引导）
 
 ```bash
 # 服务端（公网，SSH 到有公网的机器上跑）
@@ -67,6 +67,45 @@ curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/
 跑完会一步步问：版本 / 端口 / token / 公网域名 / 防火墙 ... 全程回车 + 选数字即可。
 
 > 自动化场景想跳过引导、传 flag 跑？看 [relay/README.md → 自动化用 flag](relay/README.md#自动化用-flag)
+
+#### 装好之后再加内网机器（不重装 relay）
+
+**不要重装**（会重置 cert / 内存里已经 push 的数据 / app 端 cert trust）。用 `--add-token`：
+
+```bash
+# 一行加 N 个（逗号分隔）
+sudo bash install-relay.sh --add-token "tok-new-1,tok-new-2,tok-new-3"
+
+# 多次跑也 OK，重复自动去重
+sudo bash install-relay.sh --add-token "tok-new-1"   # 已存在，自动跳过
+
+# 不会动 cert / binary / 已经 push 的内存数据
+# 仅追加 env + restart
+```
+
+**不知道用什么 token 字符串**？用 `openssl rand -hex 16` 生成 32 字符随机：
+
+```bash
+# 一行生成 N 个 + 一次 add
+TOKENS=""
+for i in 1 2 3 4 5; do
+  T=$(openssl rand -hex 16)
+  TOKENS="${TOKENS:+$TOKENS,}$T"
+  echo "  tok-$i: $T"      # 打印出来你抄到内网机器
+done
+sudo bash install-relay.sh --add-token "$TOKENS"
+```
+
+**想删某台内网机器的 token**（如下线了）：手动改 env：
+
+```bash
+sudo nano /opt/server-monitor/relay.env     # 改 RELAY_TOKENS=
+sudo systemctl restart server-monitor-relay
+```
+
+⚠️ **每个内网机器必须用独立 token**。一个 token 被多台机器共用会出现"数据在机器间跳变"（relay 内存里同一个 token 只存一份最新数据，后 push 的覆盖前 push 的）。
+
+详细：[relay/README.md → 二.5、已装好之后再加 token](relay/README.md#二5已装好之后再加-token新增内网机器)
 
 ### HTTPS 证书
 
