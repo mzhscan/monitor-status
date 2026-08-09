@@ -3,7 +3,10 @@
 
 package collector
 
-import "time"
+import (
+	"log"
+	"time"
+)
 
 // Report is the JSON-serialised snapshot returned by /api/report. The
 // fields mirror the Flutter client's AgentData model — keep them in sync
@@ -35,7 +38,15 @@ func Collect(agentName, xuiDBPath string) *Report {
 	}
 
 	if xuiDBPath != "" && FileExists(xuiDBPath) {
-		if xui, err := CollectXUI(xuiDBPath); err == nil {
+		xui, err := CollectXUI(xuiDBPath)
+		if err != nil {
+			// 之前 err 被静默吞掉，app 端只看到 "没 xui 字段" 不知道为啥。
+			// 现在把错误塞到 xui._error，app 详情页能直接看到具体原因。
+			log.Printf("⚠️  xui 采集失败: %v", err)
+			r.XUI = map[string]interface{}{
+				"_error": err.Error(),
+			}
+		} else {
 			if clients, ok := xui["clients"].([]map[string]interface{}); ok {
 				for _, c := range clients {
 					email, _ := c["email"].(string)

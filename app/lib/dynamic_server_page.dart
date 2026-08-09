@@ -90,7 +90,10 @@ class DynamicServerPage extends StatelessWidget {
       ],
       if (agent.isVps && agent.hasXui) ...[
         const SizedBox(height: 10),
-        _VpsSection(xui: agent.xui!, agentName: agent.name),
+        if (agent.xui!.error != null)
+          _XuiErrorCard(error: agent.xui!.error!, agentName: agent.name)
+        else
+          _VpsSection(xui: agent.xui!, agentName: agent.name),
       ],
     ];
   }
@@ -1247,6 +1250,93 @@ class _EditDiskDialogState extends State<_EditDiskDialog> {
 // ============================================================
 // VPS section: 3xui clients / inbounds
 // ============================================================
+
+/// 3xui 采集失败时的提示卡（v2.4.17+）。
+/// 之前 agent 端把 CollectXUI 错误静默吞掉，app 只能看到 "没 xui 字段"
+/// 分不清是没装 3x-ui 还是 db 读失败。现在 agent 把错误塞进 xui._error，
+/// app 这里渲染一个红卡片让 user 知道具体原因。
+class _XuiErrorCard extends StatelessWidget {
+  final String error;
+  final String agentName;
+  const _XuiErrorCard({required this.error, required this.agentName});
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: const Color(0x1AE53935),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.warning_amber_rounded,
+                  color: Color(0xFFE53935),
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  '3xui 数据采集失败',
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFEF2F2),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0x33E53935), width: 0.5),
+            ),
+            child: SelectableText(
+              error,
+              style: const TextStyle(
+                fontSize: 12,
+                color: Color(0xFF1A1A1A),
+                fontFamily: 'monospace',
+                height: 1.4,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            '排查步骤：',
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF7A7A82),
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            '1. 确认 3x-ui 已安装（systemctl status x-ui）\n'
+            '2. 确认数据库存在：/etc/x-ui/x-ui.db\n'
+            '3. 看 agent 日志：journalctl -u server-monitor-agent -f',
+            style: TextStyle(
+              fontSize: 11.5,
+              color: Color(0xFF7A7A82),
+              height: 1.6,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _VpsSection extends StatefulWidget {
   final XuiInfo xui;

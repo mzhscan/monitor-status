@@ -395,6 +395,11 @@ class XuiInfo {
   final double totalDownGb;
   final List<XuiClient> clients;
   final List<XuiInbound> inbounds;
+  /// agent 采集 xui 失败时填的错误信息（v2.4.17+）。null = 采集成功。
+  /// 失败时 `clients` / `inbounds` 都是空，但 `xui` 字段本身存在，
+  /// 让 app 能区分"没装 3x-ui"（整个 xui 字段缺席 → isNas）和
+  /// "装了 3x-ui 但读 db 失败"（xui 字段存在但 _error 非空 → 标 VPS + 显示错误卡）。
+  final String? error;
   const XuiInfo({
     required this.onlineCount,
     required this.totalClients,
@@ -402,6 +407,7 @@ class XuiInfo {
     required this.totalDownGb,
     required this.clients,
     required this.inbounds,
+    this.error,
   });
   factory XuiInfo.fromJson(Map<String, dynamic> j) => XuiInfo(
         onlineCount: _i(j['online_count']),
@@ -414,6 +420,11 @@ class XuiInfo {
         inbounds: ((j['inbounds'] as List?) ?? [])
             .map((e) => XuiInbound.fromJson(e as Map<String, dynamic>))
             .toList(),
+        // _error 字段：agent 端 CollectXUI 失败时填的字符串。
+        // 正常情况下这个字段不存在 → 解析为 null。
+        error: (j['_error'] as String?)?.isNotEmpty == true
+            ? j['_error'] as String
+            : null,
       );
 }
 
