@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # 星黎监控 agent 一键部署脚本（中文 interactive + flag 覆盖）
 #
-# 一行命令（最新版）：
+# 一行命令（最新版，--version latest 自动解析 GitHub 最新 release）：
 #   curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-agent.sh | \
-#     sudo bash -s -- --version 最新版本号
+#     sudo bash -s -- --version latest
 # 例（v2.2.0）：
 #   curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-agent.sh | \
 #     sudo bash -s -- --version v2.2.0
@@ -12,10 +12,11 @@
 #   1) 在能翻墙的机器上下载 agent-linux-amd64（或 arm64）
 #   2) scp 过去：scp agent-linux-amd64 root@server:/tmp/agent
 #   3) 加 --binary 跳过 GitHub 下载：
-#      sudo bash install-agent.sh --version v2.2.0 --binary /tmp/agent
+#      sudo bash install-agent.sh --version latest --binary /tmp/agent
 #
 # Optional flags (覆盖 interactive 输入):
-#   --version VER    GitHub release 版本 (e.g. v2.0.0)
+#   --version VER    GitHub release 版本，可写 "latest" 自动解析最新
+#                    (e.g. v2.0.0, latest)
 #   --name NAME      agent 名字 (e.g. "us-vps")
 #   --token TOKEN    agent 共享密钥
 #   --port PORT      监听端口 (默认 9101)
@@ -26,6 +27,7 @@
 
 set -euo pipefail
 
+REPO="mzhscan/monitor-status"
 VERSION=""
 NAME=""
 TOKEN=""
@@ -46,17 +48,16 @@ while [[ $# -gt 0 ]]; do
     --key)     KEY_FILE="$2"; shift 2 ;;
     --binary)  BINARY_PATH="$2"; shift 2 ;;
     --no-tls)  USE_TLS=0; shift ;;
-    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
     *) echo "未知参数: $1" >&2; exit 1 ;;
   esac
 done
 
 if [[ -z "$VERSION" ]]; then
-  echo "❌ 缺少 --version (例如 v2.0.0)" >&2
+  echo "❌ 缺少 --version (例如 v2.0.0 或 latest)" >&2
   exit 1
 fi
 
-REPO="mzhscan/monitor-status"
 DATA_DIR="/opt/server-monitor"
 BIN_DIR="$DATA_DIR/bin"
 TMP=$(mktemp -d)
@@ -69,6 +70,32 @@ case "$ARCH" in
   aarch64|arm64) GOARCH=arm64 ;;
   *) echo "❌ 不支持的架构: $ARCH" >&2; exit 1 ;;
 esac
+
+# ===== --version latest 解析 =====
+# 走 GitHub API 查最新 release tag，替换 VERSION。
+# 仅在 --version 显式传 "latest" 时才查；具体版本 (v2.0.0) 不查。
+# 失败时给清晰提示：要么写死版本号，要么用 --binary 跳下载。
+if [[ "$VERSION" == "latest" ]]; then
+  echo "🔍 正在查询 GitHub 最新 release..."
+  LATEST_TAG=$(curl -fsSL --connect-timeout 8 -m 30 \
+    "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
+    | grep -oE '"tag_name":[[:space:]]*"[^"]+"' \
+    | head -1 \
+    | sed -E 's/.*"([^"]+)".*/\1/')
+  if [[ -z "$LATEST_TAG" ]]; then
+    echo "" >&2
+    echo "❌ 无法从 GitHub 解析 latest 版本" >&2
+    echo "💡 两种解决方法：" >&2
+    echo "   1) 显式指定版本号：" >&2
+    echo "      sudo bash install-agent.sh --version vX.Y.Z --name <n> --token <t>" >&2
+    echo "   2) 跳过 GitHub 下载，先本地传 binary：" >&2
+    echo "      scp agent-linux-${GOARCH} root@<server>:/tmp/agent" >&2
+    echo "      sudo bash install-agent.sh --version latest --binary /tmp/agent" >&2
+    exit 1
+  fi
+  echo "✅ 解析到最新版本: $LATEST_TAG"
+  VERSION="$LATEST_TAG"
+fi
 
 URL="https://github.com/${REPO}/releases/download/${VERSION}/agent-linux-${GOARCH}"
 
