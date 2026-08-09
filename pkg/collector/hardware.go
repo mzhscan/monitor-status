@@ -418,6 +418,10 @@ func readLoadAvg() map[string]interface{} {
 }
 
 // ===== 网络 =====
+// 读 /proc/net/dev，累加物理网卡流量。
+// v2.4.19：之前只排除 lo + bond，跑 docker 的机器会把 docker0 / veth* /
+// br-* 这些虚拟接口的流量也加进去，数字虚高。改成显式排除所有虚拟接口
+// 前缀（docker / veth / br- / virbr / tun / tap），只算物理网卡。
 func readNetwork() map[string]interface{} {
 	bytes, err := ioutil.ReadFile("/proc/net/dev")
 	if err != nil {
@@ -425,10 +429,20 @@ func readNetwork() map[string]interface{} {
 	}
 	var totalRx, totalTx int64
 	for _, line := range strings.Split(string(bytes), "\n") {
-		if strings.HasPrefix(line, "Inter") || strings.HasPrefix(line, " face") || strings.HasPrefix(line, " lo:") || strings.HasPrefix(line, "bond") {
+		// 跳过表头行
+		if strings.HasPrefix(line, "Inter") || strings.HasPrefix(line, " face") {
 			continue
 		}
+		// 行首第一个 token 是接口名（带 :），例如 "  eth0:"、"docker0:"。
 		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		iface := strings.TrimSuffix(fields[0], ":")
+		// 排除虚拟接口：lo / bond / docker / veth / br- / virbr / tun / tap
+		if isVirtualIface(iface) {
+			continue
+		}
 		if len(fields) >= 9 {
 			rx, _ := strconv.ParseInt(fields[1], 10, 64)
 			tx, _ := strconv.ParseInt(fields[9], 10, 64)
@@ -442,6 +456,31 @@ func readNetwork() map[string]interface{} {
 		"rx_mb":    round2(float64(totalRx) / 1024 / 1024),
 		"tx_mb":    round2(float64(totalTx) / 1024 / 1024),
 	}
+}
+
+// isVirtualIface 列出所有不应该计入"物理网卡流量"的虚拟接口前缀。
+// 注意 veth / docker / virbr 等可能是空字符串（如 docker bridge 默认是 docker0，
+// 但用户自定义网络可能是 br-xxxxxx），所以用前缀匹配更稳。
+func isVirtualIface(name string) bool {
+	switch {
+	case name == "lo":
+		return true
+	case strings.HasPrefix(name, "bond"):
+		return true
+	case strings.HasPrefix(name, "docker"):
+		return true
+	case strings.HasPrefix(name, "veth"):
+		return true
+	case strings.HasPrefix(name, "br-"):
+		return true
+	case strings.HasPrefix(name, "virbr"):
+		return true
+	case strings.HasPrefix(name, "tun"):
+		return true
+	case strings.HasPrefix(name, "tap"):
+		return true
+	}
+	return false
 }
 
 // ===== 运行时间 =====

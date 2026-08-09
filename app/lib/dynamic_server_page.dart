@@ -330,6 +330,37 @@ class _HardwareSummaryCard extends StatelessWidget {
                   ],
                 ),
               ),
+              // 主机名右边：已运行时间小 chip（v2.4.19+）
+              if (agent.hardware?.uptime.isNotEmpty == true) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0x1A10B981),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0x3310B981)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.access_time_rounded,
+                        size: 11,
+                        color: Color(0xFF10B981),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        agent.hardware!.uptime,
+                        style: const TextStyle(
+                          color: Color(0xFF10B981),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -339,13 +370,13 @@ class _HardwareSummaryCard extends StatelessWidget {
           _kv('内存', _fmtMem()),
           _kv('显卡', _fmtGpu()),
           _kv('硬盘', _fmtDisks()),
-          _kv('网络', _fmtNet()),
+          _kv('网络', _fmtNet(), hint: '开机至今流量'),
         ],
       ),
     );
   }
 
-  Widget _kv(String k, String v) => Padding(
+  Widget _kv(String k, String v, {String? hint}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -355,7 +386,16 @@ class _HardwareSummaryCard extends StatelessWidget {
               child: Text(k, style: const TextStyle(color: Color(0xFF7A7A82), fontSize: 12)),
             ),
             Expanded(
-              child: Text(v, style: const TextStyle(color: Color(0xFF1A1A1A), fontSize: 12.5)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(v, style: const TextStyle(color: Color(0xFF1A1A1A), fontSize: 12.5)),
+                  if (hint != null) ...[
+                    const SizedBox(height: 1),
+                    Text(hint, style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 10.5)),
+                  ],
+                ],
+              ),
             ),
           ],
         ),
