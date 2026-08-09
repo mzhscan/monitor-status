@@ -9,6 +9,7 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'about_page.dart';
 import 'add_server_dialog.dart';
@@ -145,7 +146,11 @@ class _MonitorAppState extends State<MonitorApp> {
             // 总览页 → 双击退
             if (_handleBack(innerContext)) {
               // 第二次按了 → 真退出
-              Navigator.of(innerContext).pop();
+              // Bug fix: 之前用 Navigator.of().pop() 只 pop 了 route，留个空
+              // Navigator 渲染黑屏，要再按一次返回才真正关 activity。换成
+              // SystemNavigator.pop() 直接发系统 back press 让 OS 关掉
+              // FlutterActivity。两次返回直达桌面。
+              SystemNavigator.pop();
             }
           },
           child: const HomePage(),
