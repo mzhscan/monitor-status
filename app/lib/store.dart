@@ -147,19 +147,28 @@ class MonitorStore extends ChangeNotifier {
   ///
   /// Returns true if the write round-tripped through SharedPreferences
   /// (v2.4.4: post-save verify), false on mismatch (UI toasts on this).
+  /// 改硬盘 alias / 隐藏状态。
+  ///
+  /// v2.4.14 简化：硬盘 alias 和隐藏**只维护在内存里，不落盘**。
+  /// 之前的实现把整个 _servers 列表（包含 disk config）走 SharedPreferences
+  /// 保存，问题：
+  ///   1. 每次改一个盘要重新 encode 整个 server 列表
+  ///   2. Android 上 Editor.commit() 偶尔返回 false → 整次保存失败
+  ///   3. round-trip verify 反而引入假阳性（v2.4.13 撤了但没解决根本问题）
+  ///
+  /// 现在的实现：直接 in-memory 改 _servers 然后 notifyListeners()。
+  /// 代价：app 重启后 alias / 隐藏会丢，需要重新设置。
+  /// 收益：永远不会"保存失败"，逻辑也极简。
+  /// 如果以后真要持久化，用 path_provider 写文件（更稳）或者独立 SharedPreferences
+  /// key（不要嵌进 server 列表 JSON）。
   Future<bool> updateDiskConfig(
     String id, {
     Map<String, String>? aliases,
     Map<String, bool>? hidden,
     bool merge = false,
   }) async {
-    // Bug fix: don't fall back to a wrong server if id is missing. Previously
-    // the orElse returned `_servers.first`, so a bad id would silently mutate
-    // the wrong server's config and the function still returned true (write
-    // succeeded but no actual update happened for the requested id).
     final idx = _servers.indexWhere((s) => s.id == id);
     if (idx < 0) {
-      debugPrint('updateDiskConfig: server id=$id not found');
       return false;
     }
     final s = _servers[idx];
@@ -176,7 +185,7 @@ class MonitorStore extends ChangeNotifier {
     _servers = [..._servers]..[idx] = updated;
     if (_currentServer?.id == id) _currentServer = updated;
     notifyListeners();
-    return await _saveServers(_servers);
+    return true;
   }
 
   /// Initialize the store: load persisted servers, build clients, start
