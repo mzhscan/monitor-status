@@ -141,6 +141,55 @@ curl -sk https://usvps.mzhhua.cn:9200/health
 
 ---
 
+# 二.5、已装好之后再加 token（新增内网机器）
+
+装好 relay 后，要加新的内网机器，**不要重装**（会重置 cert / 内存里已经 push 的数据 / app 端 cert trust）。用 `--add-token`：
+
+```bash
+# 一行加 1 个 / N 个（逗号分隔）
+sudo bash install-relay.sh --add-token "tok-new-1,tok-new-2,tok-new-3"
+
+# 也可多次跑（追加 + 自动去重）
+sudo bash install-relay.sh --add-token "tok-new-4"
+sudo bash install-relay.sh --add-token "tok-new-1"   # 已存在，自动跳过
+```
+
+**会做什么**：
+- 读 `/opt/server-monitor/relay.env` 里的现有 `RELAY_TOKENS=`
+- 拼上新的 → 去重 → 写回 env
+- `systemctl restart server-monitor-relay` 重新加载白名单
+
+**不会做什么**：
+- ❌ 不重新下载 binary
+- ❌ 不重新生成 cert（app 端 cert trust 不变）
+- ❌ 不动 systemd unit
+- ❌ 不清内存里已经 push 的数据
+
+**不知道用什么 token 字符串**？用 `openssl rand -hex 16` 生成 32 字符随机：
+
+```bash
+# 一行生成 N 个 token + 一次 add
+TOKENS=""
+for i in 1 2 3 4 5; do
+  T=$(openssl rand -hex 16)
+  TOKENS="${TOKENS:+$TOKENS,}$T"
+  echo "  tok-$i: $T"      # 打印出来你抄到内网机器
+done
+echo "----- 上面是要加到 relay 的 5 个 token，每个内网机器用一个 -----"
+sudo bash install-relay.sh --add-token "$TOKENS"
+```
+
+**想删某台内网机器的 token**（如下线了）：手动改 env：
+
+```bash
+sudo nano /opt/server-monitor/relay.env     # 改 RELAY_TOKENS=
+sudo systemctl restart server-monitor-relay
+```
+
+⚠️ **重要：每个内网机器必须用独立 token**。一个 token 被多台机器共用会出现"数据在机器间跳变"（因为 relay 内存里同一个 token 只存一份最新数据，后 push 的覆盖前 push 的）。详见 [# 十一、设计取舍说明](#十一设计取舍说明) 的"为什么不做 1 token → N 机器"。
+
+---
+
 # 三、客户端部署（reverse-agent）
 
 > 装在**没公网 IP 的内网机器**上（家里 NAS、树莓派、公司内网 server 等）
@@ -299,37 +348,6 @@ sudo bash install-reverse-agent.sh --version v2.4.24 \
 | reverse-agent | `--relay-cert-fp` | 强烈建议 | relay cert SHA-256 指纹，64 字符 hex |
 | reverse-agent | `--interval` | 可选 | push 间隔（默认 5s） |
 | 两个 | `--binary` | 可选 | 本地已下载的 binary（墙内用） |
-
-## 8.1 服务端追加 token（不重装）
-
-部署完 relay 后，要给新的内网机器加 token，**不要重装**（会重置 cert / 内存里的 push 数据）。用 `--add-token`：
-
-```bash
-# 一行加 N 个（逗号分隔）
-sudo bash install-relay.sh --add-token "tok-new-1,tok-new-2,tok-new-3"
-
-# 也可以多次跑（追加 + 自动去重）
-sudo bash install-relay.sh --add-token "tok-new-4"
-sudo bash install-relay.sh --add-token "tok-new-1"   # 已存在，自动去重
-```
-
-**会做什么**：
-- 读 `/opt/server-monitor/relay.env` 里的现有 RELAY_TOKENS=
-- 拼上新的 → 去重 → 写回 env
-- `systemctl restart server-monitor-relay` 重新加载白名单
-- 保留：cert / binary / systemd unit / 已经 push 的内存数据
-
-**不会做**：
-- 重新下载 binary
-- 重新生成 cert（所以 app 端 cert trust 不变）
-- 问版本 / 端口 / 域名（这些保留上次装的值）
-
-如果想**删 token**（比如某台内网机器下线了），手动改 env：
-
-```bash
-sudo nano /opt/server-monitor/relay.env     # 改 RELAY_TOKENS=
-sudo systemctl restart server-monitor-relay
-```
 
 # 九、升级
 
