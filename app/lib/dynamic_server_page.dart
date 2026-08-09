@@ -1137,6 +1137,9 @@ class _EditDiskDialogState extends State<_EditDiskDialog> {
         widget.serverId,
         aliases: {widget.disk.mount: _ctrl.text.trim()},
         hidden: {widget.disk.mount: _hidden},
+        // merge=true: 否则单条 map 会把别的盘的 alias / hidden 整个擦掉
+        // (store.updateDiskConfig 内部：merge=false 时是替换)
+        merge: true,
       );
       if (mounted) Navigator.of(context).pop();
     } catch (e) {

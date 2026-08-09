@@ -9,6 +9,7 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'about_page.dart';
 import 'add_server_dialog.dart';
 import 'dynamic_server_page.dart';
@@ -28,8 +29,12 @@ class MonitorApp extends StatefulWidget {
 
 class _MonitorAppState extends State<MonitorApp> {
   DateTime? _lastBack;
+  // v2.4.3 fix: 之前在 build() 里 new MonitorStore()，build 一次就 new 一次。
+  // 搬到 initState 后整个 App 生命周期只有一份 store + 一组 polling timer。
+  late final MonitorStore _store;
 
   /// 双击返回退出：第一次按提示「再按一次回到桌面」，2 秒内再按才真退出。
+  /// v2.4.3: 仅在总览页生效；详情页按下时直接 selectOverview() 回总览。
   bool _handleBack() {
     final now = DateTime.now();
     if (_lastBack != null &&
@@ -57,16 +62,27 @@ class _MonitorAppState extends State<MonitorApp> {
   ScaffoldMessengerState? get _messenger => _messengerKey.currentState;
 
   @override
-  Widget build(BuildContext context) {
-    final store = MonitorStore();
+  void initState() {
+    super.initState();
+    _store = MonitorStore();
     // Fire-and-forget: start loads persisted servers + starts polling.
     // Bug #8 fix: use the real unawaited() from dart:async (was a no-op
     // stub that swallowed the Future, here for documentation).
-    unawaited(store.start());
+    unawaited(_store.start());
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
+        // 详情页 → 按返回回总览页
+        if (!_store.isOverview) {
+          _store.selectOverview();
+          return;
+        }
+        // 总览页 → 双击退
         if (_handleBack()) {
           // 第二次按了 → 真退出
           Navigator.of(context).pop();
@@ -132,7 +148,7 @@ class _MonitorAppState extends State<MonitorApp> {
           space: 0.5,
         ),
       ),
-      home: StoreScope(store: store, child: const HomePage()),
+      home: StoreScope(store: _store, child: const HomePage()),
       ),
     );
   }
@@ -149,8 +165,45 @@ class StoreScope extends StatelessWidget {
   }
 }
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  // v2.4.3：首次启动自动弹「添加服务器」对话框。
+  // 用 SharedPreferences 持久化"已经弹过"标记，弹完即置 true，
+  // 后续用户删完所有 server 也不会再弹。
+  bool _firstLaunchChecked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkFirstLaunch();
+    });
+  }
+
+  Future<void> _checkFirstLaunch() async {
+    if (_firstLaunchChecked) return;
+    final store = context.monitor;
+    // 等 store.start() 跑完（首次冷启 SharedPreferences 还要读盘）
+    while (!store.firstLoadDone) {
+      await Future.delayed(const Duration(milliseconds: 50));
+      if (!mounted) return;
+    }
+    _firstLaunchChecked = true;
+    final prefs = await SharedPreferences.getInstance();
+    final shown = prefs.getBool('first_launch_shown') ?? false;
+    if (!shown && mounted && store.orderedServers.isEmpty) {
+      await prefs.setBool('first_launch_shown', true);
+      if (mounted) {
+        await AddServerDialog.show(context, store);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

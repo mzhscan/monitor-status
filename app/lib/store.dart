@@ -54,6 +54,11 @@ class MonitorStore extends ChangeNotifier {
   MonitorServer? _currentServer;
   bool _isLoading = false;
   String? _error;
+  /// True once [start] has finished loading persisted servers from disk.
+  /// UI uses this to gate the first-launch AddServerDialog (so it doesn't
+  /// pop up before SharedPreferences has been read).
+  bool _firstLoadDone = false;
+  bool get firstLoadDone => _firstLoadDone;
 
   /// The agent data currently being displayed for the current server.
   AgentData? get currentData {
@@ -140,14 +145,26 @@ class MonitorStore extends ChangeNotifier {
     String id, {
     Map<String, String>? aliases,
     Map<String, bool>? hidden,
+    // When true, merge the incoming maps with the existing ones on the
+    // server (per-key union). When false (default), the incoming maps
+    // REPLACE the existing ones entirely. The bulk manager wants replace
+    // (so the user can delete an alias); the per-disk editor wants merge
+    // (so editing one disk doesn't wipe the others).
+    bool merge = false,
   }) async {
     final s = _servers.firstWhere(
       (s) => s.id == id,
       orElse: () => _servers.first,
     );
+    final Map<String, String> newAliases = aliases == null
+        ? s.diskAliases
+        : (merge ? {...s.diskAliases, ...aliases} : aliases);
+    final Map<String, bool> newHidden = hidden == null
+        ? s.hiddenDisks
+        : (merge ? {...s.hiddenDisks, ...hidden} : hidden);
     final updated = s.copyWith(
-      diskAliases: aliases ?? s.diskAliases,
-      hiddenDisks: hidden ?? s.hiddenDisks,
+      diskAliases: newAliases,
+      hiddenDisks: newHidden,
     );
     _servers = _servers.map((x) => x.id == id ? updated : x).toList();
     if (_currentServer?.id == id) _currentServer = updated;
@@ -189,6 +206,7 @@ class MonitorStore extends ChangeNotifier {
       await _saveServers(_servers);
     }
     _servers = saved;
+    _firstLoadDone = true;
     notifyListeners();
     _tickAll();
     // Bug #6 fix: poll every 5s to match the agent's 5s probe interval.
