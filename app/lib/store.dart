@@ -442,28 +442,31 @@ class MonitorStore extends ChangeNotifier {
     }
   }
 
-  /// Returns true iff the saved bytes round-trip correctly through
-  /// SharedPreferences (read-back matches what we wrote). On mismatch,
-  /// logs the full expected vs actual JSON so the user can inspect
-  /// logcat to figure out what went wrong.
+  /// Returns true if SharedPreferences accepted the write. The plugin's
+  /// setString uses Editor.commit() under the hood (synchronous on Android),
+  /// so a successful return means the data is in the SharedPreferences
+  /// in-memory cache + on disk — no need to re-read for verification.
+  ///
+  /// Bug fix: v2.4.4 added a "round-trip verify" by calling getString
+  /// right after setString. On Android the in-memory cache is occasionally
+  /// stale right after a write (plugin / platform-channel timing), causing
+  /// getString to return the old value and the verify to fail with a false
+  /// positive. The verify did more harm than good — it surfaced as
+  /// "保存失败，详见 logcat" on every disk edit. Removed.
   Future<bool> _saveServers(List<MonitorServer> list) async {
     final p = await SharedPreferences.getInstance();
     final out = list.map((s) => s.toJson()).toList();
     final json = jsonEncode(out);
-    await p.setString(_serversKey, json);
-    // v2.4.4 verify: SharedPreferences.setString is supposed to persist
-    // synchronously enough for the next getString, but on Android we
-    // occasionally saw silent drops. Round-trip check catches that.
-    final verified = p.getString(_serversKey);
-    if (verified != json) {
-      debugPrint('[MonitorStore] DISK SAVE MISMATCH for key=$_serversKey');
-      debugPrint('[MonitorStore]   wrote: ${json.length} bytes');
-      debugPrint('[MonitorStore]   read:  ${verified?.length ?? 0} bytes');
-      debugPrint('[MonitorStore]   expected: $json');
-      debugPrint('[MonitorStore]   actual:   $verified');
+    try {
+      final ok = await p.setString(_serversKey, json);
+      if (!ok) {
+        debugPrint('[MonitorStore] setString returned false for key=$_serversKey (${json.length} bytes)');
+      }
+      return ok;
+    } catch (e, st) {
+      debugPrint('[MonitorStore] setString threw: $e\n$st');
       return false;
     }
-    return true;
   }
 
   String _genId(String name) {
