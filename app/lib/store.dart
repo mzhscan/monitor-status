@@ -464,7 +464,7 @@ class MonitorStore extends ChangeNotifier {
         ? 'srv-${DateTime.now().millisecondsSinceEpoch}'
         : base;
     // Bug #2 fix: detect name collisions and append a numeric suffix
-    // (e.g. "doogeee" → "doogeee" once, then "doogeee-2", "doogeee-3"…).
+    // (e.g. "my-server" → "my-server-2", "my-server-3"…).
     // Previously the second add silently overwrote the first server's
     // _perServer entry and token.
     if (!_idTaken(baseId)) return baseId;

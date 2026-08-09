@@ -5,7 +5,7 @@
 // 在所有平台上通用。
 //
 // 必填 env:
-//   AGENT_NAME     —— agent 名字，例如 "us-vps"
+//   AGENT_NAME     —— agent 名字，例如 "my-server"
 //   AGENT_TOKEN    —— 共享密钥，app 连过来时放在 X-Agent-Token header
 //
 // 可选 env:

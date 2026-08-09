@@ -25,7 +25,7 @@ type Reporter struct {
 	Client     *http.Client
 }
 
-// NewReporter 创建上报器（接受自签证书，因为 mzhhua 用自签 HTTPS）
+// NewReporter 创建上报器（接受自签证书，agent 端默认启 HTTPS）
 func NewReporter(backendURL, token, agentName string) *Reporter {
 	return &Reporter{
 		BackendURL: backendURL,

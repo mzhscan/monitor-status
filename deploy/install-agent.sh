@@ -17,7 +17,7 @@
 # Optional flags (覆盖 interactive 输入):
 #   --version VER    GitHub release 版本，可写 "latest" 自动解析最新
 #                    (e.g. v2.0.0, latest)
-#   --name NAME      agent 名字 (e.g. "us-vps")
+#   --name NAME      agent 名字 (e.g. "my-server")
 #   --token TOKEN    agent 共享密钥
 #   --port PORT      监听端口 (默认 9101)
 #   --cert PATH      显式证书路径 (trim 自动 / 3x-ui cert / 自签 都可)

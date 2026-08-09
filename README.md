@@ -9,9 +9,9 @@
        │
        │ HTTPS（每台 server 一个连接）
        ▼
-[Agent on us-vps :9101]   ──读──>  [3x-ui DB / 3xui cert]
-[Agent on mzhhua :9101]   ──读──>  [trim OS 自动 cert]
-[Agent on doogee :9101]  ──读──>  [trim OS 自动 cert]
+[Agent on server-1 :9101]   ──读──>  [3x-ui DB / 3xui cert]
+[Agent on server-2 :9101]   ──读──>  [trim OS 自动 cert]
+[Agent on server-3 :9101]   ──读──>  [自签 / 其他 cert]
 ```
 
 - **APK**：Flutter 客户端，所有数据存本机
@@ -24,7 +24,7 @@
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-agent.sh | \
-  sudo bash -s -- --version v2.0.0
+  sudo bash -s -- --version latest
 ```
 
 脚本会用中文 interactive 引导：
@@ -35,9 +35,9 @@ curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/
 
 也可以传 flag 跳过交互：
 ```bash
-sudo bash install-agent.sh --version v2.0.0 \
-  --name us-vps \
-  --token CoAI_xxx \
+sudo bash install-agent.sh --version latest \
+  --name my-server \
+  --token '<your-strong-secret>' \
   --port 9101 \
   --cert /root/cert/ip/fullchain.pem \
   --key /root/cert/ip/privkey.pem
@@ -48,8 +48,8 @@ sudo bash install-agent.sh --version v2.0.0 \
 agent 默认启 HTTPS（`USE_TLS=true`），自动按以下顺序找证书：
 
 1. **显式 `CERT_FILE` / `KEY_FILE`**（install 脚本会问）
-2. **trim OS**：自动从 `/usr/trim/etc/network_gateway_cert.conf` 加载（mzhhua / doogeee 适用）
-3. **3x-ui 自带 cert**：`/root/cert/{ip,domain}/fullchain.pem` + `privkey.pem`（us-vps 适用）
+2. **trim OS**：自动从 `/usr/trim/etc/network_gateway_cert.conf` 加载
+3. **3x-ui 自带 cert**：`/root/cert/{ip,domain}/fullchain.pem` + `privkey.pem`
 4. **自签 fallback**：都不行就在 `/opt/server-monitor/certs/` 生成自签（10 年有效）
 
 app 端首次连自签证书时，会弹"是否信任"对话框显示 SHA-256 指纹，跟服务端核对一致后再信任。

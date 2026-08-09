@@ -279,7 +279,7 @@ class _AddServerDialogState extends State<AddServerDialog> {
                 _label('域名或 IP'),
                 _input(
                   controller: _hostCtrl,
-                  hint: '例如：us-vps.example.com 或 23.141.204.236',
+                  hint: '例如：agent.example.com 或 192.0.2.1',
                   icon: Icons.dns_rounded,
                   keyboardType: TextInputType.url,
                   validator: (v) {
