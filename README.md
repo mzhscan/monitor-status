@@ -15,7 +15,7 @@
 ```
 
 - **APK**：Flutter 客户端，所有数据存本机
-- **Agent**：被监控机器上跑的轻量 HTTP server（一个 binary，~7MB）
+- **Agent**：被监控机器上跑的轻量 HTTP server（一个 binary，~14MB）
 - **不需要后端**：每台机器的 agent 直接对 app 暴露 `/health` + `/api/report`
 
 ## 一键部署 agent
@@ -56,18 +56,17 @@ app 端首次连自签证书时，会弹"是否信任"对话框显示 SHA-256 �
 
 ## Android APK
 
-去 [Releases](https://github.com/mzhscan/monitor-status/releases) 下载 `monitor-status-*.apk` 装到手机。首次启动：
-1. 点右上角 **+**
-2. 填显示名称 + agent URL + agent token
-3. 完成，3xui 客户端列表 + 72h 流量 + 硬件数据立即可见
+去 [Releases](https://github.com/mzhscan/monitor-status/releases) 下载 `monitor-status-*.apk` 装到手机。
 
-每个 agent 独立一个 server 项（没有"统一面板"概念），按字母排序。
+**首次启动会自动弹"添加服务器"对话框**，按提示填显示名称 + agent URL + agent token 即可。如果首次没弹或之后删光了所有 server，点右上角 **+** 手动加。
+
+每个 agent 独立一个 server 项（没有"统一面板"概念）。**默认按字母排序**，长按任意卡片的菜单 → 「排序」可进入 iOS 风格的拖动排序模式。
 
 ## Agent 平台
 
 release 里有：
 - `agent-linux-amd64`：x86_64 Linux（PC、VPS、普通 Linux）
-- `agent-linux-arm64`：aarch64 Linux（树莓派 4/5、ARM VPS、Mac mini Asahi、NAS）
+- `agent-linux-arm64`：aarch64 Linux（树莓派 4/5、ARM VPS、Apple Silicon Mac mini、NAS）
 
 ## Agent 配置（env）
 
@@ -76,9 +75,12 @@ release 里有：
 | `AGENT_NAME` | ✅ | hostname | app 端显示名 |
 | `AGENT_TOKEN` | ✅ | — | app 端连过来时验的密钥 |
 | `AGENT_PORT` | | `9101` | 监听端口 |
+| `AGENT_BIND` | | `0.0.0.0` | 监听地址。有公网 IP 的机器建议改成 `127.0.0.1` 配合 SSH 隧道或 VPN，避免 9101 暴露公网被扫 |
 | `USE_TLS` | | `true` | 是否启 HTTPS |
 | `CERT_FILE` | | 自动 | 显式证书路径（覆盖自动查找） |
 | `KEY_FILE` | | 自动 | 显式私钥路径 |
+| `AGENT_IPS` | | 空 | 逗号分隔的 IP，自签证书会加到 SAN 列表里 |
+| `AGENT_HOSTNAMES` | | 空 | 逗号分隔的 DNS 名，自签证书会加到 SAN 列表里 |
 | `XUI_DB_PATH` | | `/etc/x-ui/x-ui.db` | 3x-ui sqlite |
 | `COLLECT_INTERVAL` | | `2` | 采集间隔（秒） |
 | `TRAFFIC_72H_FILE` | | `/opt/server-monitor/data/traffic_72h.json` | 72h 流量历史 |
@@ -88,8 +90,11 @@ release 里有：
 - agent token 走 `X-Agent-Token` header（常量时间比较）
 - 公共 CA 证书（Let's Encrypt）自动信任
 - 自签 / 不可信 cert 走 TOFU 弹窗（显示 SHA-256 指纹，user 跟服务端核对）
-- token 存 APK 本地 SharedPreferences（**plaintext**，v2.1 改用 secure storage）
-- agent 直连公网，token 鉴权（**有暴露面**，建议放 fail2ban / Cloudflare Tunnel）
+- token 存 Android Keystore（v2.3.0 起改用 `flutter_secure_storage`，v2.3 之前是 SharedPreferences 明文）
+- agent 默认监听全网卡，token 鉴权（**有公网暴露面**）。缓解方式：
+  - `AGENT_BIND=127.0.0.1` + SSH 隧道 / WireGuard / Cloudflare Tunnel
+  - 前面套 fail2ban + 反代限制来源 IP
+- 自签证书的 SAN 列表默认只有 `127.0.0.1` / `::1` / `localhost`，公网连会被 hostname mismatch 拦截。通过 `AGENT_IPS` / `AGENT_HOSTNAMES` 把真实地址加到 SAN 后可以正常验证（不用绕 Flutter 端的 issuer 白名单）
 
 ## 开发
 
@@ -106,8 +111,8 @@ flutter run --dart-define=GLASS_STYLE=solid
 ## Release
 
 ```bash
-git tag v2.0.0
-git push origin v2.0.0
+git tag v2.4.12
+git push origin v2.4.12
 ```
 
 `.github/workflows/release.yml` 会编译：
