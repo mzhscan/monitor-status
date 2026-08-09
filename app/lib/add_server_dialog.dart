@@ -100,8 +100,11 @@ class _AddServerDialogState extends State<AddServerDialog> {
       final fp = await _captureCertFingerprint(url);
       if (!mounted) return;
       if (fp == null) {
+        // Bug #4 fix: clearer guidance when fingerprint capture fails
+        // (rare; usually a transient network issue). User can hit
+        // "测试连接" again to retry.
         setState(() {
-          _testResult = '探测到证书问题，但无法获取指纹';
+          _testResult = '网络异常，无法获取证书指纹。请检查网络后重新点"测试连接"。';
           _busy = false;
         });
         return;
@@ -155,6 +158,10 @@ class _AddServerDialogState extends State<AddServerDialog> {
       );
       if (accept == true) {
         await TrustedCerts.trust(url, fp);
+        // Bug #3 fix: wait for the in-memory trust cache to refresh
+        // BEFORE the next testAgent() creates a new AgentClient that
+        // might race the cache load and fail the cert check.
+        await TrustedCertCache.refresh();
         final res2 = await widget.store.testAgent(url: url, token: token);
         if (!mounted) return;
         setState(() {

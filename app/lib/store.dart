@@ -125,9 +125,8 @@ class MonitorStore extends ChangeNotifier {
   }
 
   /// Per-disk UI config (aliases + hidden). v2.0.0 stores this locally
-  /// on the device (no backend); v1 had it on the backend. v2.0.0
-  /// store keeps the API but the actual persistence is in-memory only
-  /// (lost on app restart). Add local disk-config persistence in v2.1.
+  /// on the device (no backend); v1 had it on the backend. v2.2.8 fix:
+  /// actually persist the changes (was in-memory only, lost on restart).
   Future<void> updateDiskConfig(
     String id, {
     Map<String, String>? aliases,
@@ -144,6 +143,9 @@ class MonitorStore extends ChangeNotifier {
     _servers = _servers.map((x) => x.id == id ? updated : x).toList();
     if (_currentServer?.id == id) _currentServer = updated;
     notifyListeners();
+    // Bug #1 fix: persist disk aliases + hidden state so they survive
+    // app restart (was previously lost on every restart).
+    await _saveServers(_servers);
   }
 
   /// Initialize the store: load persisted servers, build clients, start
@@ -366,11 +368,29 @@ class MonitorStore extends ChangeNotifier {
   }
 
   String _genId(String name) {
-    final cleaned = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9-]'), '-');
-    if (cleaned.isEmpty) {
-      return 'srv-${DateTime.now().millisecondsSinceEpoch}';
+    final base = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9-]'), '-');
+    final baseId = base.isEmpty
+        ? 'srv-${DateTime.now().millisecondsSinceEpoch}'
+        : base;
+    // Bug #2 fix: detect name collisions and append a numeric suffix
+    // (e.g. "doogeee" → "doogeee" once, then "doogeee-2", "doogeee-3"…).
+    // Previously the second add silently overwrote the first server's
+    // _perServer entry and token.
+    if (!_idTaken(baseId)) return baseId;
+    for (int i = 2; ; i++) {
+      final candidate = '$baseId-$i';
+      if (!_idTaken(candidate)) return candidate;
     }
-    return cleaned;
+  }
+
+  /// True if [id] is already used by a registered server (either in
+  /// the current list or in the in-memory polling map).
+  bool _idTaken(String id) {
+    if (_perServer.containsKey(id)) return true;
+    for (final s in _servers) {
+      if (s.id == id) return true;
+    }
+    return false;
   }
 }
 

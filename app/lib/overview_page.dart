@@ -30,16 +30,12 @@ class OverviewPage extends StatelessWidget {
       color: const Color(0xFFFF6B95),
       backgroundColor: Colors.white,
       onRefresh: () async => Future.delayed(const Duration(milliseconds: 500)),
-      // 唯一改动：SliverReorderableList 在 v2.2.0 视觉坏（拖手柄列被拉成卡片全高），
-      // 换成普通 ReorderableListView。其它逻辑 / 卡片结构 / 长按=菜单 / 拖手柄在右
-      // 全部保持 v2.2.0 原样。
-      child: ReorderableListView(
-        shrinkWrap: true,  // 按内容尺寸，不撑满父级；卡片下方不出现空白可滚区
+      // DIAG-LISTVIEW: 换成 v1.0.9 的 ListView（不是 ReorderableListView），
+      // 验证 ReorderableListView 本身是否就是 gray area 的来源。
+      // 注意：暂时放弃 drag-to-reorder，long-press 弹菜单保留（_ServerCard 的
+      // onLongPress 在 GlassCard 上）。
+      child: ListView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-        buildDefaultDragHandles: false,
-        onReorder: (oldIndex, newIndex) {
-          store.reorderServers(oldIndex, newIndex);
-        },
         children: [
           if (store.error != null)
             Container(
