@@ -141,15 +141,17 @@ class MonitorStore extends ChangeNotifier {
   /// Per-disk UI config (aliases + hidden). v2.0.0 stores this locally
   /// on the device (no backend); v1 had it on the backend. v2.2.8 fix:
   /// actually persist the changes (was in-memory only, lost on restart).
-  Future<void> updateDiskConfig(
+  /// merge=true merges per-key into the existing map (used by the
+  /// per-disk editor so editing one disk doesn't wipe the others).
+  /// merge=false (default) replaces the maps entirely (used by the bulk
+  /// manager so the user can delete an alias).
+  ///
+  /// Returns true if the write round-tripped through SharedPreferences
+  /// (v2.4.4: post-save verify), false on mismatch (UI toasts on this).
+  Future<bool> updateDiskConfig(
     String id, {
     Map<String, String>? aliases,
     Map<String, bool>? hidden,
-    // When true, merge the incoming maps with the existing ones on the
-    // server (per-key union). When false (default), the incoming maps
-    // REPLACE the existing ones entirely. The bulk manager wants replace
-    // (so the user can delete an alias); the per-disk editor wants merge
-    // (so editing one disk doesn't wipe the others).
     bool merge = false,
   }) async {
     final s = _servers.firstWhere(
@@ -171,7 +173,9 @@ class MonitorStore extends ChangeNotifier {
     notifyListeners();
     // Bug #1 fix: persist disk aliases + hidden state so they survive
     // app restart (was previously lost on every restart).
-    await _saveServers(_servers);
+    // v2.4.4: return whether the write actually round-tripped through
+    // SharedPreferences so the UI can toast "已保存" vs "保存失败".
+    return await _saveServers(_servers);
   }
 
   /// Initialize the store: load persisted servers, build clients, start
@@ -430,10 +434,28 @@ class MonitorStore extends ChangeNotifier {
     }
   }
 
-  Future<void> _saveServers(List<MonitorServer> list) async {
+  /// Returns true iff the saved bytes round-trip correctly through
+  /// SharedPreferences (read-back matches what we wrote). On mismatch,
+  /// logs the full expected vs actual JSON so the user can inspect
+  /// logcat to figure out what went wrong.
+  Future<bool> _saveServers(List<MonitorServer> list) async {
     final p = await SharedPreferences.getInstance();
     final out = list.map((s) => s.toJson()).toList();
-    await p.setString(_serversKey, jsonEncode(out));
+    final json = jsonEncode(out);
+    await p.setString(_serversKey, json);
+    // v2.4.4 verify: SharedPreferences.setString is supposed to persist
+    // synchronously enough for the next getString, but on Android we
+    // occasionally saw silent drops. Round-trip check catches that.
+    final verified = p.getString(_serversKey);
+    if (verified != json) {
+      debugPrint('[MonitorStore] DISK SAVE MISMATCH for key=$_serversKey');
+      debugPrint('[MonitorStore]   wrote: ${json.length} bytes');
+      debugPrint('[MonitorStore]   read:  ${verified?.length ?? 0} bytes');
+      debugPrint('[MonitorStore]   expected: $json');
+      debugPrint('[MonitorStore]   actual:   $verified');
+      return false;
+    }
+    return true;
   }
 
   String _genId(String name) {

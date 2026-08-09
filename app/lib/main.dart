@@ -15,6 +15,7 @@ import 'add_server_dialog.dart';
 import 'dynamic_server_page.dart';
 import 'overview_page.dart';
 import 'store.dart';
+import 'toast.dart';
 
 void main() {
   runApp(const MonitorApp());
@@ -33,7 +34,7 @@ class _MonitorAppState extends State<MonitorApp> {
   // 搬到 initState 后整个 App 生命周期只有一份 store + 一组 polling timer。
   late final MonitorStore _store;
 
-  /// 双击返回退出：第一次按提示「再按一次回到桌面」，2 秒内再按才真退出。
+  /// 双击返回退出：第一次按提示「再按一次回到桌面」(toast)，2 秒内再按才真退出。
   /// v2.4.3: 仅在总览页生效；详情页按下时直接 selectOverview() 回总览。
   bool _handleBack() {
     final now = DateTime.now();
@@ -42,24 +43,9 @@ class _MonitorAppState extends State<MonitorApp> {
       return true; // 允许退出
     }
     _lastBack = now;
-    final messenger = _messenger;
-    if (messenger != null) {
-      messenger.clearSnackBars();
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('再按一次返回桌面'),
-          duration: Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
+    AppToast.show(context, '再按一次返回桌面');
     return false; // 阻止退出
   }
-
-  // 缓存 ScaffoldMessenger，build 之后用
-  final GlobalKey<ScaffoldMessengerState> _messengerKey =
-      GlobalKey<ScaffoldMessengerState>();
-  ScaffoldMessengerState? get _messenger => _messengerKey.currentState;
 
   @override
   void initState() {
@@ -73,83 +59,88 @@ class _MonitorAppState extends State<MonitorApp> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        // 详情页 → 按返回回总览页
-        if (!_store.isOverview) {
-          _store.selectOverview();
-          return;
-        }
-        // 总览页 → 双击退
-        if (_handleBack()) {
-          // 第二次按了 → 真退出
-          Navigator.of(context).pop();
-        }
-      },
-      child: MaterialApp(
-        scaffoldMessengerKey: _messengerKey,
-        title: '星黎监控',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFFF6B95),
-          brightness: Brightness.light,
-        ).copyWith(
-          primary: const Color(0xFFFF6B95),
-          secondary: const Color(0xFFFFB6C1),
-          surface: Colors.white.withOpacity(0.55),
-          onSurface: const Color(0xFF2C2C2C),
-        ),
-        scaffoldBackgroundColor: const Color(0xFFFFEEF2),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          centerTitle: false,
-          titleTextStyle: TextStyle(
-            color: Color(0xFF2C2C2C),
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.2,
-          ),
-          iconTheme: IconThemeData(color: Color(0xFF2C2C2C)),
-          actionsIconTheme: IconThemeData(color: Color(0xFF2C2C2C)),
-        ),
-        textTheme: const TextTheme(
-          bodyLarge: TextStyle(color: Color(0xFF2C2C2C)),
-          bodyMedium: TextStyle(color: Color(0xFF2C2C2C)),
-          bodySmall: TextStyle(color: Color(0xFF7A7A82)),
-          titleMedium: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600),
-          titleLarge: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w700),
-        ),
-        popupMenuTheme: PopupMenuThemeData(
-          color: const Color(0xF2FFFFFF),
-          surfaceTintColor: Colors.transparent,
-          elevation: 8,
-          shadowColor: const Color(0x33FF6B95),
-          shape: RoundedRectangleBorder(
-            borderRadius: const BorderRadius.all(Radius.circular(16)),
-            side: const BorderSide(color: Color(0x33FFB6C1), width: 0.6),
-          ),
-          textStyle: const TextStyle(color: Color(0xFF2C2C2C), fontSize: 14),
-          iconColor: const Color(0xFFFF6B95),
-        ),
-        cardTheme: const CardThemeData(
-          elevation: 0,
-          surfaceTintColor: Colors.transparent,
-          margin: EdgeInsets.zero,
-        ),
-        dividerTheme: const DividerThemeData(
-          color: Color(0x22000000),
-          thickness: 0.5,
-          space: 0.5,
-        ),
+    return MaterialApp(
+      title: '星黎监控',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: const Color(0xFFFF6B95),
+        brightness: Brightness.light,
+      ).copyWith(
+        primary: const Color(0xFFFF6B95),
+        secondary: const Color(0xFFFFB6C1),
+        surface: Colors.white.withOpacity(0.55),
+        onSurface: const Color(0xFF2C2C2C),
       ),
-      home: StoreScope(store: _store, child: const HomePage()),
+      scaffoldBackgroundColor: const Color(0xFFFFEEF2),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: false,
+        titleTextStyle: TextStyle(
+          color: Color(0xFF2C2C2C),
+          fontSize: 17,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.2,
+        ),
+        iconTheme: IconThemeData(color: Color(0xFF2C2C2C)),
+        actionsIconTheme: IconThemeData(color: Color(0xFF2C2C2C)),
       ),
+      textTheme: const TextTheme(
+        bodyLarge: TextStyle(color: Color(0xFF2C2C2C)),
+        bodyMedium: TextStyle(color: Color(0xFF2C2C2C)),
+        bodySmall: TextStyle(color: Color(0xFF7A7A82)),
+        titleMedium: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600),
+        titleLarge: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w700),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: const Color(0xF2FFFFFF),
+        surfaceTintColor: Colors.transparent,
+        elevation: 8,
+        shadowColor: const Color(0x33FF6B95),
+        shape: RoundedRectangleBorder(
+          borderRadius: const BorderRadius.all(Radius.circular(16)),
+          side: const BorderSide(color: Color(0x33FFB6C1), width: 0.6),
+        ),
+        textStyle: const TextStyle(color: Color(0xFF2C2C2C), fontSize: 14),
+        iconColor: const Color(0xFFFF6B95),
+      ),
+      cardTheme: const CardThemeData(
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        margin: EdgeInsets.zero,
+      ),
+      dividerTheme: const DividerThemeData(
+        color: Color(0x22000000),
+        thickness: 0.5,
+        space: 0.5,
+      ),
+    ),
+    // v2.4.4 fix: PopScope 必须包在 home route 里面才能拦到那个 route 的
+    // 返回手势。之前放在 MaterialApp 外层是 NO-OP，home route 没有任何
+    // PopScope 祖先 → 用户按返回直接弹 home route = 退到桌面。
+    home: StoreScope(
+      store: _store,
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) return;
+          // 详情页 → 按返回回总览页
+          if (!_store.isOverview) {
+            _store.selectOverview();
+            return;
+          }
+          // 总览页 → 双击退
+          if (_handleBack()) {
+            // 第二次按了 → 真退出
+            Navigator.of(context).pop();
+          }
+        },
+        child: const HomePage(),
+      ),
+    ),
     );
   }
 }

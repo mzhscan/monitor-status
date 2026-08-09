@@ -13,6 +13,7 @@
 import 'package:flutter/material.dart';
 import 'models.dart';
 import 'store.dart';
+import 'toast.dart';
 import 'widgets.dart';
 
 class DynamicServerPage extends StatelessWidget {
@@ -820,18 +821,19 @@ class _DiskManagerSheetState extends State<_DiskManagerSheet> {
   Future<void> _save() async {
     setState(() => _busy = true);
     try {
-      await widget.store.updateDiskConfig(
+      final ok = await widget.store.updateDiskConfig(
         widget.serverId,
         aliases: _aliases,
         hidden: _hidden,
       );
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) {
+        AppToast.show(context, ok ? '已保存' : '保存失败，详见 logcat');
+        Navigator.of(context).pop();
+      }
     } catch (e) {
       if (mounted) {
         setState(() => _busy = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('保存失败：$e')),
-        );
+        AppToast.show(context, '保存失败：$e');
       }
     }
   }
@@ -1133,7 +1135,7 @@ class _EditDiskDialogState extends State<_EditDiskDialog> {
   Future<void> _save() async {
     setState(() => _busy = true);
     try {
-      await widget.store.updateDiskConfig(
+      final ok = await widget.store.updateDiskConfig(
         widget.serverId,
         aliases: {widget.disk.mount: _ctrl.text.trim()},
         hidden: {widget.disk.mount: _hidden},
@@ -1141,13 +1143,14 @@ class _EditDiskDialogState extends State<_EditDiskDialog> {
         // (store.updateDiskConfig 内部：merge=false 时是替换)
         merge: true,
       );
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) {
+        AppToast.show(context, ok ? '已保存' : '保存失败，详见 logcat');
+        Navigator.of(context).pop();
+      }
     } catch (e) {
       if (mounted) {
         setState(() => _busy = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('保存失败：$e')),
-        );
+        AppToast.show(context, '保存失败：$e');
       }
     }
   }
