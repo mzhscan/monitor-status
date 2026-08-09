@@ -75,9 +75,12 @@ class AgentClient {
   /// Full /api/report. Throws on any non-200 so the store can mark the
   /// server as offline.
   Future<AgentData> fetchReport() async {
+    // Bug #6 fix: 5s client-side timeout, matching the agent's own
+    // 5s probe interval (agent/cmd/agent/main.go). Prevents the app from
+    // hanging on half-dead networks.
     final r = await _client
         .get(Uri.parse('$url/api/report'), headers: _headers)
-        .timeout(const Duration(seconds: 6));
+        .timeout(const Duration(seconds: 5));
     if (r.statusCode != 200) {
       throw Exception('HTTP ${r.statusCode}');
     }

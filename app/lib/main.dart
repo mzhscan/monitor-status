@@ -6,6 +6,7 @@
 // or frosted glass (frosted build), selected at compile time via
 // --dart-define=GLASS_STYLE=...
 
+import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'about_page.dart';
@@ -59,6 +60,8 @@ class _MonitorAppState extends State<MonitorApp> {
   Widget build(BuildContext context) {
     final store = MonitorStore();
     // Fire-and-forget: start loads persisted servers + starts polling.
+    // Bug #8 fix: use the real unawaited() from dart:async (was a no-op
+    // stub that swallowed the Future, here for documentation).
     unawaited(store.start());
     return PopScope(
       canPop: false,
@@ -134,8 +137,6 @@ class _MonitorAppState extends State<MonitorApp> {
     );
   }
 }
-
-void unawaited(Future<dynamic> _) {} // tiny helper to keep main.dart self-contained
 
 class StoreScope extends StatelessWidget {
   final MonitorStore store;

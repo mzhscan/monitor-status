@@ -1,12 +1,14 @@
 // Local state store. No backend — each MonitorServer keeps its own
-// AgentClient and is polled directly. Server list is persisted to
-// SharedPreferences so a user can uninstall/reinstall without losing
-// their configs (caveat: agent token lives in plaintext on-device).
+// AgentClient and is polled directly. Server list (URL/name/disk-aliases)
+// is persisted to SharedPreferences. Agent tokens are stored in
+// flutter_secure_storage (Android Keystore-backed) so they survive
+// uninstall/reinstall and stay encrypted at rest (v2.3.0).
 
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
 import 'errors.dart';
@@ -39,6 +41,13 @@ extension MonitorScopeExt on BuildContext {
 
 class MonitorStore extends ChangeNotifier {
   static const _serversKey = 'monitor_servers_v2';
+  // Bug #5: tokens now live in flutter_secure_storage (Android Keystore),
+  // keyed by server id. Keeps tokens out of the plain JSON in SharedPreferences
+  // and out of unencrypted backups.
+  static const _secureStorage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
+  static String _tokenKey(String id) => 'token:$id';
 
   final Map<String, _PerServer> _perServer = {};
   List<MonitorServer> _servers = const [];
@@ -151,21 +160,39 @@ class MonitorStore extends ChangeNotifier {
   /// Initialize the store: load persisted servers, build clients, start
   /// polling. Call once on app start.
   Future<void> start() async {
+    // Server list (URLs, names, disk aliases, …) is plain JSON in
+    // SharedPreferences. Tokens are Keystore-backed via flutter_secure_storage.
     final saved = await _loadServers();
+    // One-time migration: read legacy v2.2.x tokens from the JSON, push
+    // them to secure storage, then strip them from the JSON. Idempotent.
+    final legacy = await _extractLegacyTokens();
     for (final s in saved) {
-      final tok = _tokens[s.id];
+      String? tok = await _secureStorage.read(key: _tokenKey(s.id));
+      if ((tok == null || tok.isEmpty) && legacy.containsKey(s.id)) {
+        tok = legacy[s.id];
+        await _secureStorage.write(key: _tokenKey(s.id), value: tok);
+      }
+      _tokens[s.id] = tok ?? '';
       final p = _PerServer(
         server: s,
-        client: (s.kind == 'agent' && s.agentUrl != null && tok != null)
+        client: (s.kind == 'agent' &&
+                s.agentUrl != null &&
+                tok != null &&
+                tok.isNotEmpty)
             ? AgentClient(url: s.agentUrl!, token: tok)
             : null,
       );
       _perServer[s.id] = p;
     }
+    if (legacy.isNotEmpty) {
+      // Persist JSON without the legacy 'token' fields.
+      await _saveServers(_servers);
+    }
     _servers = saved;
     notifyListeners();
     _tickAll();
-    Timer.periodic(const Duration(seconds: 2), (_) => _tickAll());
+    // Bug #6 fix: poll every 5s to match the agent's 5s probe interval.
+    Timer.periodic(const Duration(seconds: 5), (_) => _tickAll());
   }
 
   void selectOverview() {
@@ -201,7 +228,9 @@ class MonitorStore extends ChangeNotifier {
     final p = _PerServer(server: s, client: AgentClient(url: url, token: token));
     _perServer[s.id] = p;
     _servers = [..._servers, s];
-    await _saveServers(_servers, token: token);
+    _tokens[s.id] = token;
+    await _secureStorage.write(key: _tokenKey(s.id), value: token);
+    await _saveServers(_servers);
     notifyListeners();
     // Kick off an immediate probe so the user sees the result fast.
     unawaited(p.pollOnce());
@@ -238,7 +267,9 @@ class MonitorStore extends ChangeNotifier {
     _perServer[id] = newP;
     _servers = [..._servers]..[idx] = updated;
     if (_currentServer?.id == id) _currentServer = updated;
-    await _saveServers(_servers, token: token);
+    _tokens[id] = token;
+    await _secureStorage.write(key: _tokenKey(id), value: token);
+    await _saveServers(_servers);
     notifyListeners();
     unawaited(newP.pollOnce());
   }
@@ -265,6 +296,7 @@ class MonitorStore extends ChangeNotifier {
     final p = _perServer.remove(id);
     p?.client?.close();
     _tokens.remove(id);
+    await _secureStorage.delete(key: _tokenKey(id));
     _servers = _servers.where((s) => s.id != id).toList();
     if (_currentServer?.id == id) _currentServer = null;
     await _saveServers(_servers);
@@ -331,8 +363,34 @@ class MonitorStore extends ChangeNotifier {
 
   // --- persistence ---
 
-  /// In-memory cache of {serverId: token} (plaintext — see v2.1 todo).
+  /// In-memory cache of {serverId: token} for the UI helpers (e.g.
+  /// [tokenFor]). Populated on [start] from secure storage; mutated
+  /// alongside every add/update/delete.
   final Map<String, String> _tokens = {};
+
+  /// One-shot migration helper: read v2.2.x-style JSON tokens from
+  /// SharedPreferences (the old format stored tokens inline). Returns a
+  /// map {serverId: token}; empty if no legacy entries exist or if the
+  /// JSON can't be parsed.
+  Future<Map<String, String>> _extractLegacyTokens() async {
+    final p = await SharedPreferences.getInstance();
+    final raw = p.getString(_serversKey);
+    if (raw == null || raw.isEmpty) return const {};
+    final out = <String, String>{};
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      for (final e in list) {
+        final m = e as Map<String, dynamic>;
+        if (m['token'] is String) {
+          out[m['id'] as String] = m['token'] as String;
+        }
+      }
+    } catch (_) {
+      // Legacy JSON unreadable — start() will surface the parse error
+      // through _loadServers() and reset to empty.
+    }
+    return out;
+  }
 
   Future<List<MonitorServer>> _loadServers() async {
     final p = await SharedPreferences.getInstance();
@@ -340,30 +398,23 @@ class MonitorStore extends ChangeNotifier {
     if (raw == null || raw.isEmpty) return const [];
     try {
       final list = jsonDecode(raw) as List<dynamic>;
-      for (final e in list) {
-        final m = e as Map<String, dynamic>;
-        if (m['token'] is String) {
-          _tokens[m['id'] as String] = m['token'] as String;
-        }
-      }
       return list
           .map((e) => MonitorServer.fromJson(e as Map<String, dynamic>))
           .toList();
-    } catch (_) {
+    } catch (e, st) {
+      // Bug #7 fix: surface the parse failure to the user (silent return
+      // would lose all their server configs without warning). The error
+      // banner on the overview page picks up `_error` and asks the user
+      // to re-add servers.
+      debugPrint('Failed to parse persisted server list: $e\n$st');
+      _error = '本地服务器配置损坏或被外部修改，已重置为空白。请重新添加服务器。';
       return const [];
     }
   }
 
-  Future<void> _saveServers(List<MonitorServer> list, {String? token}) async {
+  Future<void> _saveServers(List<MonitorServer> list) async {
     final p = await SharedPreferences.getInstance();
-    final out = <Map<String, dynamic>>[];
-    for (final s in list) {
-      final j = s.toJson();
-      // Persist the latest token alongside the server entry.
-      final tok = token ?? _tokens[s.id];
-      if (tok != null) j['token'] = tok;
-      out.add(j);
-    }
+    final out = list.map((s) => s.toJson()).toList();
     await p.setString(_serversKey, jsonEncode(out));
   }
 
