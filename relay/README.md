@@ -418,6 +418,33 @@ sudo cat /opt/server-monitor/reverse-agent.env | grep TOKEN
 
 要严格一致。
 
+### 6. install 脚本看起来"卡住 / 没跑完"（v2.4.25 之前的老坑）
+
+老版本 install 脚本（v2.4.24 及更早）有两个静默坑：
+
+1. **env 写入失败不报错** —— 极少数 corner case（磁盘满 / 目录权限 / heredoc 中断）下 `/opt/server-monitor/reverse-agent.env` 没写出来，但 service 已经 enable 了。结果：agent 启动失败 → systemd `Restart=on-failure` **无限重启**，日志里能看到 `restart counter is at 3026` 之类的恐怖数字，真正的错误被刷掉。
+2. **启动检查只看 `is-active` + sleep 2** —— 对 Go binary 太短，agent 还没初始化完就报"启动失败"，用户被引导去看日志但其实没日志可看。
+
+**v2.4.25+ 修复**（直接重跑 install 命令即可升级）：
+
+- 写完 env 立刻 `[[ -s "$ENV_FILE" ]]` 检查 + 关键变量 grep，**任何一步失败立刻 exit 1**，不等 systemd 反复重启
+- systemd unit 加 `StartLimitBurst=5` + `StartLimitIntervalSec=120s`，**5 分钟内连挂 5 次就放弃**
+- 启动健康检查改成**轮询 SubState=running（最多 15 秒）**，失败时**自动内嵌最近 30 行 journal 日志 + 常见原因提示**
+
+**如果你在 v2.4.24 或更老版本上踩过这个坑**，按下面救回来：
+
+```bash
+# 1. 看 service 现在的状态（如果是 activating / restarting 就是踩坑了）
+sudo systemctl show server-monitor-reverse-agent -p SubState --value
+sudo systemctl show server-monitor-reverse-agent -p NRestarts --value
+
+# 2. 直接重跑 install 命令（覆盖 binary + 重新写 env + 重启）
+curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-reverse-agent.sh | sudo bash
+
+# 3. 重跑完应该看到 "✅ reverse-agent 启动成功 (SubState=running)"
+#    然后 journalctl -u server-monitor-reverse-agent -f 看 push ok
+```
+
 ---
 
 # 十一、设计取舍说明

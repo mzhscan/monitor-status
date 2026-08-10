@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 星黎监控 reverse-agent 一键部署脚本（v2.4.24+）
+# 星黎监控 reverse-agent 一键部署脚本（v2.4.25+）
 #
 # 装在**没有公网 IP 的内网机器**上（家里 NAS、树莓派、公司内网 server）。
 # 主动 push 数据给 relay，每台机器用一个独立 token。
@@ -206,12 +206,14 @@ fi
 # ===== 3x-ui db 路径 =====
 if [[ -z "$XUI_DB_PATH" ]]; then
   echo ""
-  echo "📂 3x-ui 数据库路径（这台机器跑 3x-ui 才需要，否则留空跳过）"
-  echo "   默认 /etc/x-ui/x-ui.db（3x-ui 标准路径）"
+  echo "📂 3x-ui 数据库路径（这台机器跑 3x-ui 才需要，否则**直接回车跳过**）"
+  echo "   标准路径 /etc/x-ui/x-ui.db，但**回车 = 留空 = 不采集 3x-ui 数据**"
+  echo "   想启用就明确输入完整路径"
   require_interactive
-  prompt_line "3x-ui db 路径（留空跳过）" XUI_DB_PATH "/etc/x-ui/x-ui.db"
+  prompt_line "3x-ui db 路径（直接回车 = 跳过）" XUI_DB_PATH ""
   if [[ -z "$XUI_DB_PATH" ]]; then
     XUI_DB_PATH=""
+    echo "   → 跳过 3x-ui 数据采集"
   fi
 fi
 
@@ -297,6 +299,26 @@ RELAY_CERT_FP=$RELAY_CERT_FP
 EOF
 chmod 600 "$ENV_FILE"
 
+# ===== 自检：env 必须写成功 =====
+# 之前发生过"二进制下完、service 启了、但 env 缺失"导致 agent 死循环重启 3000+ 次的坑。
+# 任何一步失败立刻报错退出，不要等 systemd 反复重启才发现。
+if [[ ! -s "$ENV_FILE" ]]; then
+  echo "❌ env 写入失败: $ENV_FILE 不存在或为空" >&2
+  echo "   检查 /opt/server-monitor/ 目录权限 + 磁盘空间" >&2
+  exit 1
+fi
+# 至少关键变量得有值
+for _k in RELAY_URL RELAY_TOKEN AGENT_NAME PUSH_INTERVAL; do
+  if ! grep -q "^${_k}=" "$ENV_FILE"; then
+    echo "❌ env 缺少关键变量: $_k" >&2
+    exit 1
+  fi
+done
+echo "📝 env 自检通过 (6 个变量)"
+# token 脱敏打印，方便用户核对写进去的值
+echo "   env 内容（token 已脱敏）:"
+sed -E 's/^(RELAY_TOKEN=).*/\1***redacted***/; s/^/   /' "$ENV_FILE"
+
 # ===== systemd unit =====
 SERVICE_FILE="/etc/systemd/system/server-monitor-reverse-agent.service"
 cat > "$SERVICE_FILE" <<EOF
@@ -311,6 +333,10 @@ EnvironmentFile=$ENV_FILE
 ExecStart=$BIN_DIR/reverse-agent -relay-url "\$RELAY_URL" -token "\$RELAY_TOKEN" -name "\$AGENT_NAME" -xui-db "\$XUI_DB_PATH" -interval \$PUSH_INTERVAL -relay-cert-fp "\$RELAY_CERT_FP"
 Restart=on-failure
 RestartSec=10s
+# 5 分钟内连挂 5 次就放弃，避免坏配置（如 env 缺失、relay 不可达）导致
+# 日志被 3000+ 次重启信息塞满、用户根本没机会看到真正的错误。
+StartLimitBurst=5
+StartLimitIntervalSec=120s
 LimitNOFILE=65536
 
 [Install]
@@ -328,11 +354,32 @@ fi
 sleep 1
 systemctl start server-monitor-reverse-agent.service
 
-sleep 2
-if systemctl is-active --quiet server-monitor-reverse-agent.service; then
-  echo "✅ reverse-agent 启动成功"
+# ===== 健康检查：等到 SubState=running 或超时 =====
+# 之前 sleep 2 + is-active 太短，agent 还没起来就报失败；
+# 现在轮询最多 15 秒，每秒看一次 SubState。
+echo "⏳ 等待 reverse-agent 进入 running 状态..."
+SUB_STATE=""
+for _i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+  SUB_STATE=$(systemctl show -p SubState --value server-monitor-reverse-agent.service 2>/dev/null || echo "unknown")
+  [[ "$SUB_STATE" == "running" ]] && break
+  sleep 1
+done
+
+if [[ "$SUB_STATE" == "running" ]]; then
+  echo "✅ reverse-agent 启动成功 (SubState=running)"
 else
-  echo "❌ 启动失败，看日志：journalctl -u server-monitor-reverse-agent -n 50" >&2
+  ACTIVE_STATE=$(systemctl show -p ActiveState --value server-monitor-reverse-agent.service 2>/dev/null || echo "unknown")
+  echo "❌ 启动失败：SubState=$SUB_STATE ActiveState=$ACTIVE_STATE" >&2
+  echo "" >&2
+  echo "=== 最近 30 行 journal 日志 ===" >&2
+  journalctl -u server-monitor-reverse-agent -n 30 --no-pager >&2 || true
+  echo "==============================" >&2
+  echo "" >&2
+  echo "💡 常见原因：" >&2
+  echo "   1) env 文件里 RELAY_URL/TOKEN 配错" >&2
+  echo "   2) relay 不可达（防火墙 / 域名解析）" >&2
+  echo "   3) RELAY_CERT_FP 跟 relay 实际 cert 不一致" >&2
+  echo "   4) 3x-ui DB 路径不对（可临时把 XUI_DB_PATH 留空跳过）" >&2
   exit 1
 fi
 

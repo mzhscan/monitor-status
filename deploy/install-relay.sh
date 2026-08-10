@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 星黎监控 relay 一键部署脚本（v2.4.24+）
+# 星黎监控 relay 一键部署脚本（v2.4.25+）
 #
 # 装在**有公网 IP 的服务器**上（usvps / mzhhua / 其他 VPS）。
 # 内网 reverse-agent 会主动 push 数据给这台机器，app 也从这里拉数据。
@@ -381,6 +381,22 @@ RELAY_DATA_DIR=$DATA_DIR
 EOF
 chmod 600 "$ENV_FILE"
 
+# ===== 自检：env 必须写成功 + 关键变量不能空 =====
+if [[ ! -s "$ENV_FILE" ]]; then
+  echo "❌ env 写入失败: $ENV_FILE 不存在或为空" >&2
+  echo "   检查 /opt/server-monitor/ 目录权限 + 磁盘空间" >&2
+  exit 1
+fi
+for _k in RELAY_PORT RELAY_TOKENS; do
+  if ! grep -q "^${_k}=" "$ENV_FILE"; then
+    echo "❌ env 缺少关键变量: $_k" >&2
+    exit 1
+  fi
+done
+echo "📝 env 自检通过"
+echo "   env 内容（token 已脱敏）:"
+sed -E 's/^(RELAY_TOKENS=).*/\1***redacted***/; s/^/   /' "$ENV_FILE"
+
 # ===== systemd unit =====
 SERVICE_FILE="/etc/systemd/system/server-monitor-relay.service"
 cat > "$SERVICE_FILE" <<EOF
@@ -395,6 +411,10 @@ EnvironmentFile=$ENV_FILE
 ExecStart=$BIN_DIR/relay-server
 Restart=on-failure
 RestartSec=5s
+# 5 分钟内连挂 5 次就放弃，避免坏配置（如 token 拼错、cert 路径错）导致
+# 日志被 3000+ 次重启信息塞满、用户根本没机会看到真正的错误。
+StartLimitBurst=5
+StartLimitIntervalSec=120s
 LimitNOFILE=65536
 
 [Install]
@@ -412,11 +432,29 @@ fi
 sleep 1
 systemctl start server-monitor-relay.service
 
-sleep 2
-if systemctl is-active --quiet server-monitor-relay.service; then
-  echo "✅ relay 启动成功"
+# ===== 健康检查：等到 SubState=running 或超时 =====
+echo "⏳ 等待 relay 进入 running 状态..."
+SUB_STATE=""
+for _i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+  SUB_STATE=$(systemctl show -p SubState --value server-monitor-relay.service 2>/dev/null || echo "unknown")
+  [[ "$SUB_STATE" == "running" ]] && break
+  sleep 1
+done
+
+if [[ "$SUB_STATE" == "running" ]]; then
+  echo "✅ relay 启动成功 (SubState=running)"
 else
-  echo "❌ relay 启动失败，看日志：journalctl -u server-monitor-relay -n 50" >&2
+  ACTIVE_STATE=$(systemctl show -p ActiveState --value server-monitor-relay.service 2>/dev/null || echo "unknown")
+  echo "❌ relay 启动失败：SubState=$SUB_STATE ActiveState=$ACTIVE_STATE" >&2
+  echo "" >&2
+  echo "=== 最近 30 行 journal 日志 ===" >&2
+  journalctl -u server-monitor-relay -n 30 --no-pager >&2 || true
+  echo "==============================" >&2
+  echo "" >&2
+  echo "💡 常见原因：" >&2
+  echo "   1) 端口 $PORT 已被占用（lsof -i:$PORT 看谁在用）" >&2
+  echo "   2) env 里 RELAY_TOKENS 拼写错 / 包含非法字符" >&2
+  echo "   3) cert 路径不存在 / 权限不对" >&2
   exit 1
 fi
 

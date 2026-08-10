@@ -68,6 +68,31 @@ curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/
 
 > 自动化场景想跳过引导、传 flag 跑？看 [relay/README.md → 自动化用 flag](relay/README.md#自动化用-flag)
 
+#### 💡 v2.4.25+ install 脚本改进
+
+- **env 自检**：写完 `/opt/server-monitor/{reverse-agent,relay}.env` 后立刻校验存在 + 非空 + 关键变量齐全，**杜绝"二进制下了但 env 缺失"导致 agent 死循环重启**这种坑（旧版在某些 corner case 下会沉默写失败）。
+- **systemd StartLimit**：5 分钟内连挂 5 次就放弃，**不再无限重启**（之前能刷 3000+ 次重启信息把日志塞满）。
+- **启动健康检查**：等 `SubState=running` 再判定成功，启动失败时**自动内嵌最近 30 行 journal 日志 + 常见原因提示**，不用再开第二个终端查。
+- **3x-ui db prompt**：`直接回车 = 跳过`（之前回车会误填 `/etc/x-ui/x-ui.db` 默认值，对没跑 3x-ui 的机器造成误导）。
+
+**升级**：直接重跑同样的 install 命令即可，env 文件保留，二进制覆盖重启即生效。
+
+**老版本留下的"半坏"状态怎么救**（比如 `systemctl status` 一直显示 activating/restarting）：
+
+```bash
+# 1. 看 service 当前 SubState
+sudo systemctl show server-monitor-reverse-agent -p SubState --value
+
+# 2. 确认 env 存在 + 有内容
+sudo cat /opt/server-monitor/reverse-agent.env
+
+# 3. 缺了就补：直接重跑 install 命令（同 URL 同 flag），它会重新写 env + 启服务
+curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-reverse-agent.sh | sudo bash
+
+# 4. 看日志
+sudo journalctl -u server-monitor-reverse-agent -n 30 --no-pager
+```
+
 #### 装好之后再加内网机器（不重装 relay）
 
 **不要重装**（会重置 cert / 内存里已经 push 的数据 / app 端 cert trust）。用 `--add-token`：
