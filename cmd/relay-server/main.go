@@ -124,7 +124,7 @@ func newServer(whitelist map[string]bool) *Server {
 //   body:   collector.Report 的 JSON
 func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, `{"error":"POST only"}`, http.StatusMethodNotAllowed)
+		http.Error(w, `{"error":"请用 POST 请求"}`, http.StatusMethodNotAllowed)
 		return
 	}
 	token := r.Header.Get("X-Relay-Token")
@@ -181,7 +181,7 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 //   header: X-Agent-Token: <token>  ← 跟现有 agent 一致
 func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, `{"error":"GET only"}`, http.StatusMethodNotAllowed)
+		http.Error(w, `{"error":"请用 GET 请求"}`, http.StatusMethodNotAllowed)
 		return
 	}
 	token := r.Header.Get("X-Agent-Token")

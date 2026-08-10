@@ -1,4 +1,5 @@
 // 把 dart:io / package:http 的异常翻译成对用户友好的中文。
+// 所有展示给用户的错误文案都过这里。永远返回中文。
 
 import 'dart:async';
 import 'dart:io';
@@ -67,8 +68,39 @@ String explainError(Object e) {
     }
     return '网络错误：$m';
   }
+  // Exception("HTTP xxx") —— 来自 AgentClient.fetchReport()，要解释成"agent 返回 HTTP xxx"
+  if (e is Exception) {
+    final s = e.toString();
+    final match = RegExp(r'HTTP\s+(\d{3})').firstMatch(s);
+    if (match != null) {
+      final code = int.parse(match.group(1)!);
+      return 'agent 返回 HTTP $code：${_httpStatusText(code)}';
+    }
+    // 其他 Exception 兜底：去掉 "Exception: " 前缀，避免用户看到 "Exception: ..."
+    if (s.startsWith('Exception: ')) {
+      return s.substring('Exception: '.length);
+    }
+    return s;
+  }
   // 兜底
   return e.toString();
+}
+
+/// 常见 HTTP 状态码的中文解释（app 端给用户看的）
+String _httpStatusText(int code) {
+  switch (code) {
+    case 400: return '请求格式错';
+    case 401: return 'token 无效或缺失';
+    case 403: return '被拒绝';
+    case 404: return '路径不存在（agent 没装好？）';
+    case 408: return '请求超时';
+    case 429: return '请求太频繁，被限流';
+    case 500: return 'agent 内部错误';
+    case 502: return 'agent 上游错误（bad gateway）';
+    case 503: return 'agent 数据未就绪（启动中 / 长时间没更新）';
+    case 504: return 'agent 上游超时';
+    default:  return '见 HTTP 标准';
+  }
 }
 
 /// 用于 test() 的返回结果：除了错误文字，还要标记是否需要弹信任框。

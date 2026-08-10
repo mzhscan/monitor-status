@@ -36,7 +36,7 @@ class CheckUpdate {
           .get(Uri.parse(_apiUrl), headers: {'Accept': 'application/vnd.github+json'})
           .timeout(const Duration(seconds: 10));
       if (r.statusCode != 200) {
-        return CheckUpdateResult.error('HTTP ${r.statusCode}');
+        return CheckUpdateResult.error('GitHub 返回 HTTP ${r.statusCode}');
       }
       final j = jsonDecode(r.body) as Map<String, dynamic>;
       final tag = (j['tag_name'] as String?) ?? '';

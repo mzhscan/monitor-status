@@ -82,7 +82,8 @@ class AgentClient {
         .get(Uri.parse('$url/api/report'), headers: _headers)
         .timeout(const Duration(seconds: 5));
     if (r.statusCode != 200) {
-      throw Exception('HTTP ${r.statusCode}');
+      // 抛带中文章节的 message，让 store 调 explainError 不会漏
+      throw Exception('agent 返回 HTTP ${r.statusCode}');
     }
     return AgentData.fromJson(jsonDecode(r.body) as Map<String, dynamic>);
   }
@@ -95,7 +96,7 @@ class AgentClient {
       if (r.statusCode == 200) {
         return {'success': true, 'message': '连接成功', 'detected': 'agent'};
       }
-      return {'success': false, 'error': 'HTTP ${r.statusCode}'};
+      return {'success': false, 'error': 'agent 返回 HTTP ${r.statusCode}'};
     } on SocketException catch (e) {
       return {'success': false, 'error': explainError(e)};
     } on HandshakeException catch (e) {
