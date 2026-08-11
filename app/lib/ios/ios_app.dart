@@ -1,14 +1,8 @@
-// iOS 27 Liquid Glass 主入口：原生 CupertinoTabScaffold
+// iOS 27 Liquid Glass 主入口：Stack + IndexedStack + 自造浮动小岛 tab bar
 //
-// 苹果官方文档明确说：
-// - "Leverage system frameworks to adopt Liquid Glass automatically"
-//   标准组件 (bars, sheets, popovers, controls) 自动获得 Liquid Glass
-// - "Reduce your use of custom backgrounds in controls and navigation
-//   elements" —— 自己画 BackdropFilter blur 反而干扰系统原生 Liquid Glass
-// - tab bar 应该是浮动的"小岛"形状，inset from edge
-//
-// 所以这里用 CupertinoTabScaffold（iOS 27 自动 Liquid Glass tab bar），
-// 不要自己画。CupertinoTabView 自带 Navigator，通过 navigatorKey 控制。
+// Flutter 3.44.9 的 CupertinoTabBar 还是 iOS 18 全宽样式（不浮动），
+// 所以这里用 IndexedStack + 自造 IOSTabBar 实现 iOS 27 的浮动小岛。
+// 每个 tab 用 CupertinoTabView 拿系统 Navigator + iOS 27 Liquid Glass 容器。
 
 import 'package:flutter/cupertino.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,6 +13,8 @@ import 'ios_detail_page.dart';
 import 'ios_error_details_page.dart';
 import 'ios_machines_page.dart';
 import 'ios_settings_page.dart';
+import 'ios_tab_bar.dart';
+import 'ios_theme.dart';
 
 class IOSApp extends StatefulWidget {
   final MonitorStore store;
@@ -29,8 +25,9 @@ class IOSApp extends StatefulWidget {
 }
 
 class _IOSAppState extends State<IOSApp> {
-  // 首启只弹一次（SharedPreferences 持久化）
+  int _currentIndex = 0;
   bool _firstLaunchChecked = false;
+  bool _pendingFirstLaunchAdd = false;
 
   // machines tab 的 Navigator state key —— first-launch 时通过它 push add page
   final _machinesNavigatorKey = GlobalKey<NavigatorState>();
@@ -68,15 +65,17 @@ class _IOSAppState extends State<IOSApp> {
     if (!shown && mounted && store.orderedServers.isEmpty) {
       await prefs.setBool('first_launch_shown', true);
       if (!mounted) return;
+      _pendingFirstLaunchAdd = true;
       // 等下一帧 push（确保 navigator 已就绪）
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _machinesNavigatorKey.currentState?.pushNamed('/add');
+        _pendingFirstLaunchAdd = false;
       });
     }
   }
 
-  // 路由表（用 _machinesNavigatorKey 替代之前 buildTabNavigator 包装的方案）
+  // 共享的路由表（详情页/添加页/错误页）
   Route<dynamic>? _onGenerateRoute(RouteSettings settings) {
     Widget page;
     if (settings.name == '/detail') {
@@ -94,38 +93,62 @@ class _IOSAppState extends State<IOSApp> {
 
   @override
   Widget build(BuildContext context) {
-    return CupertinoTabScaffold(
-      tabBar: CupertinoTabBar(
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.square_grid_2x2),
-            activeIcon: Icon(CupertinoIcons.square_grid_2x2_fill),
-            label: '机器',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.gear),
-            activeIcon: Icon(CupertinoIcons.gear_solid),
-            label: '设置',
-          ),
-        ],
+    final items = const [
+      IOSTabBarItem(
+        icon: CupertinoIcons.square_grid_2x2,
+        activeIcon: CupertinoIcons.square_grid_2x2_fill,
+        label: '机器',
       ),
-      tabBuilder: (context, index) {
-        switch (index) {
-          case 0:
-            return CupertinoTabView(
-              navigatorKey: _machinesNavigatorKey,
-              onGenerateRoute: _onGenerateRoute,
-              builder: (ctx) => IOSMachinesPage(store: widget.store),
-            );
-          case 1:
-            return CupertinoTabView(
-              onGenerateRoute: _onGenerateRoute,
-              builder: (ctx) => IOSSettingsPage(store: widget.store),
-            );
-          default:
-            return const SizedBox.shrink();
-        }
-      },
+      IOSTabBarItem(
+        icon: CupertinoIcons.gear,
+        activeIcon: CupertinoIcons.gear_solid,
+        label: '设置',
+      ),
+    ];
+
+    return Stack(
+      children: [
+        // 内容：IndexedStack（保留每个 tab 的状态）+ 背景
+        Positioned.fill(
+          child: Container(
+            // iOS 27 风格：简单白底，让系统 / 卡片自己处理任何细节
+            color: const Color(0xFFFFFFFF),
+            child: IndexedStack(
+              index: _currentIndex,
+              children: [
+                // 机器 tab
+                CupertinoTabView(
+                  navigatorKey: _machinesNavigatorKey,
+                  onGenerateRoute: _onGenerateRoute,
+                  builder: (ctx) => IOSMachinesPage(store: widget.store),
+                ),
+                // 设置 tab
+                CupertinoTabView(
+                  onGenerateRoute: _onGenerateRoute,
+                  builder: (ctx) => IOSSettingsPage(store: widget.store),
+                ),
+              ],
+            ),
+          ),
+        ),
+        // iOS 27 风格浮动小岛 tab bar
+        IOSTabBar(
+          currentIndex: _currentIndex,
+          onTap: (i) {
+            if (i == _currentIndex) {
+              // 点当前 tab → 弹回根（iOS 标准行为）
+              if (i == 0) {
+                _machinesNavigatorKey.currentState?.popUntil((r) => r.isFirst);
+              } else {
+                // settings tab 没有保存 key，简化处理
+              }
+            } else {
+              setState(() => _currentIndex = i);
+            }
+          },
+          items: items,
+        ),
+      ],
     );
   }
 }

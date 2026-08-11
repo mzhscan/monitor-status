@@ -115,7 +115,7 @@ class _IOSDetailPageState extends State<IOSDetailPage> {
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(
             IOSTheme.paddingL, IOSTheme.paddingM,
-            IOSTheme.paddingL, 100,
+            IOSTheme.paddingL, 140,  // 留出浮动 tab bar 空间
           ),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
