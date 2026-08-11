@@ -136,3 +136,34 @@ func Traffic72hBytes(email string, currentUp, currentDown int64) (up72, down72 i
 	}
 	return up72, down72, true
 }
+
+// TrafficSnapshot is a single point in the rolling history. Returned by
+// Traffic72hHistory so the web dashboard can plot a "cumulative bytes over
+// the last 72h" line chart (cumulative up = S-curve, perfect for a
+// "this client's bandwidth growth" view).
+type TrafficSnapshot struct {
+	Timestamp int64 `json:"ts"` // unix ms
+	Up        int64 `json:"up"` // cumulative up bytes at that moment
+	Down      int64 `json:"dn"` // cumulative down bytes at that moment
+}
+
+// Traffic72hHistory returns a copy of the per-client rolling history,
+// oldest first. Safe to marshal straight to JSON. Returns nil if the
+// client has no history yet (cold start).
+//
+// The web dashboard downsamples this to ~200 points before plotting;
+// full history can be up to 72h × 12/min ≈ 50k points per client, so
+// don't send the full thing to the browser unfiltered.
+func Traffic72hHistory(email string) []TrafficSnapshot {
+	trafficMu.RLock()
+	defer trafficMu.RUnlock()
+	src := traffic[email]
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]TrafficSnapshot, len(src))
+	for i, s := range src {
+		out[i] = TrafficSnapshot{Timestamp: s.Timestamp, Up: s.Up, Down: s.Down}
+	}
+	return out
+}

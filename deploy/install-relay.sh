@@ -30,6 +30,7 @@ EXTERNAL_HOST=""
 EXTERNAL_IP=""
 BINARY_PATH=""
 AUTO_FIREWALL=""
+AGENT_ENDPOINTS=""
 
 DATA_DIR="/opt/server-monitor"
 BIN_DIR="$DATA_DIR/bin"
@@ -40,14 +41,15 @@ trap 'mavis-trash '$TMP' || rm -rf '$TMP' 2>/dev/null || true' EXIT
 # ===== 参数解析 =====
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --version)       VERSION="$2"; shift 2 ;;
-    --port)          PORT="$2"; shift 2 ;;
-    --tokens)        TOKENS="$2"; shift 2 ;;
-    --add-token)     ADD_TOKENS="${ADD_TOKENS:+${ADD_TOKENS},}$2"; shift 2 ;;
-    --external-host) EXTERNAL_HOST="$2"; shift 2 ;;
-    --external-ip)   EXTERNAL_IP="$2"; shift 2 ;;
-    --binary)        BINARY_PATH="$2"; shift 2 ;;
-    --firewall)      AUTO_FIREWALL="y"; shift ;;
+    --version)         VERSION="$2"; shift 2 ;;
+    --port)            PORT="$2"; shift 2 ;;
+    --tokens)          TOKENS="$2"; shift 2 ;;
+    --add-token)       ADD_TOKENS="${ADD_TOKENS:+${ADD_TOKENS},}$2"; shift 2 ;;
+    --external-host)   EXTERNAL_HOST="$2"; shift 2 ;;
+    --external-ip)     EXTERNAL_IP="$2"; shift 2 ;;
+    --agent-endpoints) AGENT_ENDPOINTS="$2"; shift 2 ;;
+    --binary)          BINARY_PATH="$2"; shift 2 ;;
+    --firewall)        AUTO_FIREWALL="y"; shift ;;
     -h|--help)
       sed -n '2,30p' "$0"
       exit 0
@@ -321,6 +323,23 @@ if [[ -z "$AUTO_FIREWALL" ]]; then
   fi
 fi
 
+# ===== v2.4.26+: 公网 agent 代理（让网页版能展示公网机器的 3xui 趋势图）=====
+# 内网 reverse-agent 是 push 模式，公网 agent 是 proxy 模式（relay 主动拉）。
+# 格式: name|url|token，每条用逗号分隔。留空 = 不配置。
+if [[ -z "$AGENT_ENDPOINTS" ]]; then
+  echo ""
+  echo "🌐 公网 agent 代理（v2.4.26+ 网页版用）"
+  echo "   让 relay 也能代理公网 agent 的数据，网页版就能在同一个仪表盘看到"
+  echo "   全部机器（公网 + 内网）。"
+  echo "   格式: name|url|token（多条用逗号）"
+  echo "   例:   mzhhua|https://mzhhua.cn:9009/api/report|AGENT_TOKEN_HERE"
+  echo "         doogeee|https://doogeee.cn:9009/api/report|AGENT_TOKEN_HERE"
+  echo "   token 是那台 agent 的 AGENT_TOKEN（跟 Android app 配的是同一个）"
+  echo "   留空跳过：内网 reverse-agent 仍能正常 push，网页版就只看到内网机器"
+  require_interactive
+  prompt_line "公网 agent 列表（留空跳过）" AGENT_ENDPOINTS ""
+fi
+
 # ===== 准备安装 =====
 echo ""
 echo "📦 安装预览："
@@ -328,6 +347,12 @@ echo "   版本:     $VERSION"
 echo "   端口:     $PORT"
 echo "   token:    $(echo "$TOKENS" | tr ',' '\n' | wc -l | tr -d ' ') 个"
 echo "   cert SAN: host=$EXTERNAL_HOST ip=$EXTERNAL_IP"
+if [[ -n "$AGENT_ENDPOINTS" ]]; then
+  EP_COUNT=$(echo "$AGENT_ENDPOINTS" | tr '|' '\n' | grep -c '|.*|' 2>/dev/null || echo "?")
+  echo "   公网代理: $EP_COUNT 个公网 agent（v2.4.26+ 网页版用）"
+else
+  echo "   公网代理: 无（网页版只展示内网机器）"
+fi
 echo "   二进制:   $BIN_DIR/relay-server"
 echo "   env:      $ENV_FILE"
 echo ""
@@ -379,6 +404,10 @@ RELAY_IPS=$EXTERNAL_IP
 RELAY_HOSTS=$EXTERNAL_HOST
 RELAY_DATA_DIR=$DATA_DIR
 EOF
+# v2.4.26+: 公网 agent 代理列表（可选，让网页版展示公网机器的 3xui 趋势图）
+if [[ -n "$AGENT_ENDPOINTS" ]]; then
+  echo "RELAY_AGENT_ENDPOINTS=$AGENT_ENDPOINTS" >> "$ENV_FILE"
+fi
 chmod 600 "$ENV_FILE"
 
 # ===== 自检：env 必须写成功 + 关键变量不能空 =====
@@ -506,6 +535,7 @@ cat <<EOF
 env 文件:  $ENV_FILE
 binary:    $BIN_DIR/relay-server
 日志:      tail -f /var/log/server-monitor/relay.log
+网页版:    https://<relay 的域名或 IP>:$PORT/web/  (v2.4.26+)
 
 token 列表（每行一个，对应一台内网机器）:
 $(echo "$TOKENS" | tr ',' '\n' | awk '{printf "  %2d. %s\n", NR, $0}')

@@ -104,10 +104,19 @@ curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/
    检测到: ufw
 是否自动放行 9200/tcp？ [Y/n]: y
 
+🌐 公网 agent 代理（v2.4.26+ 网页版用）
+   格式: name|url|token（多条用 , 分隔）
+   留空跳过：网页版只展示内网 reverse-agent 推的机器
+公网 agent 列表（留空跳过）: mzhhua|https://mzhhua.cn:9009/api/report|xxx,doogeee|https://doogeee.cn:9009/api/report|yyy
+
 📦 安装预览：
-   版本:     v2.4.24
+   版本:     v2.4.26
    端口:     9200
-   ...
+   token:    2 个
+   cert SAN: host=usvps.mzhhua.cn ip=
+   公网代理: 2 个公网 agent（v2.4.26+ 网页版用）
+   二进制:   /opt/server-monitor/relay-server
+   env:      /opt/server-monitor/relay.env
 确认安装？ [Y/n]: y
 ✅ relay 启动成功
 ```
@@ -118,8 +127,21 @@ curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/
 - token 数量（自动生成 N 个 32 字符随机 token，**每个内网机器一个**）
 - 公网域名 / IP（cert SAN）
 - 是否自动放行防火墙
+- **公网 agent 代理列表**（v2.4.26+，让网页版看到公网机器的 3xui 趋势图）
 
-**装完输出**会显示 token 列表、env 文件位置、systemd 状态，**保存好 token 列表**。
+**装完输出**会显示 token 列表、env 文件位置、systemd 状态、网页版 URL，**保存好 token 列表**。
+
+**公网 agent 格式说明**：`name|url|token`，例：
+```
+mzhhua|https://mzhhua.cn:9009/api/report|<mzhhua 的 AGENT_TOKEN>
+doogeee|https://doogeee.cn:9009/api/report|<doogeee 的 AGENT_TOKEN>
+usvps|https://usvps.mzhhua.cn:9009/api/report|<usvps 的 AGENT_TOKEN>
+```
+（每行一条，或者一行用 `,` 分隔都行。token 跟 Android app 配的是同一个）
+
+**装完**：打开 https://usvps.mzhhua.cn:9200/web/ 看 dashboard（PC / 平板 / 手机自适应）。
+
+详细网页版说明：[主 README → 网页版](../README.md#网页版v2426)
 
 防火墙如果脚本没自动放（比如检测不到 ufw/firewalld），手动：
 
@@ -307,10 +329,17 @@ tail -f /var/log/server-monitor/reverse-agent.log
 sudo systemctl restart server-monitor-relay
 sudo systemctl restart server-monitor-reverse-agent
 
-# 改 token / 端口：编辑 env 后 restart
+# 改 token / 端口 / 公网代理：编辑 env 后 restart
 sudo nano /opt/server-monitor/relay.env
 sudo systemctl restart server-monitor-relay
+
+# 网页版 API 自测
+curl -sk https://localhost:9200/web/api/agents | python3 -m json.tool
 ```
+
+**网页版**（v2.4.26+）：
+- 打开 https://<relay>:9200/web/ 看 dashboard
+- 改 `RELAY_AGENT_ENDPOINTS` 加公网 agent 后再 restart，dashboard 就能看到它们
 
 ---
 
@@ -320,10 +349,11 @@ sudo systemctl restart server-monitor-relay
 
 ```bash
 # 服务端
-sudo bash install-relay.sh --version v2.4.24 \
+sudo bash install-relay.sh --version v2.4.26 \
   --port 9200 \
   --tokens "tok-a,tok-b,tok-c" \
-  --external-host usvps.mzhhua.cn
+  --external-host usvps.mzhhua.cn \
+  --agent-endpoints "mzhhua|https://mzhhua.cn:9009/api/report|AGENT_TOKEN,doogeee|https://doogeee.cn:9009/api/report|AGENT_TOKEN"
 
 # 客户端
 sudo bash install-reverse-agent.sh --version v2.4.24 \
@@ -342,6 +372,7 @@ sudo bash install-reverse-agent.sh --version v2.4.24 \
 | relay | `--add-token` | | **追加**新 token（不替换现有，已装过 relay 用） |
 | relay | `--external-host` | 强烈建议 | cert SAN 域名 |
 | relay | `--external-ip` | 可选 | cert SAN IP（没域名时用） |
+| relay | `--agent-endpoints` | 可选（v2.4.26+）| 公网 agent 代理列表，逗号分隔 `name\|url\|token`（让网页版能看它们的 3xui 趋势图） |
 | reverse-agent | `--relay-url` | ✅ | relay 的 URL（带 https:// 和端口） |
 | reverse-agent | `--token` | ✅ | 服务端 token 列表里的某一个 |
 | reverse-agent | `--name` | ✅ | app 端显示名 |

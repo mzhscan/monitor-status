@@ -163,6 +163,53 @@ agent 默认启 HTTPS（`USE_TLS=true`），自动按以下顺序找证书：
 
 app 端首次连自签证书时，会弹"是否信任"对话框显示 SHA-256 指纹，跟服务端核对一致后再信任。
 
+## 网页版（v2.4.26+）
+
+不用装 app，浏览器打开就能看：
+
+```
+https://<relay 的域名或 IP>:<relay 端口>/web/
+```
+
+例：https://usvps.mzhhua.cn:9200/web/
+
+**功能**：
+- 📊 全部机器的实时 CPU / 内存 / 磁盘 / 网络 / 运行时长
+- 🛰️ 3xui 客户端列表 + 在线数 + 总流量
+- 📈 **3xui 客户端的 72h 累计流量折线图**（点客户端行展开）
+- 🌓 暗色主题，自适应 PC / 平板 / 手机
+- 🔄 每 5s 自动刷新
+
+**架构**：
+- 静态文件（HTML / CSS / JS）**编译进 relay 二进制**（`//go:embed all:web`），不是单独目录
+- 内网 reverse-agent 推过来的数据直接用（push 模式，零延迟）
+- 公网 agent（mzhhua.cn / doogeee.cn / usvps agent 自身）需要额外配 `RELAY_AGENT_ENDPOINTS`（install 脚本会问），relay 5s 缓存代理拉取
+
+**数据流**：
+```
+内网 reverse-agent → POST /ingest (push)
+公网 agent ───→ relay ──GET /api/report (proxy, 5s 缓存)
+                            ↓
+                       浏览器 /web/
+```
+
+**配置公网 agent**（让网页版能看它们的 3xui 趋势图）：
+
+重跑 `install-relay.sh`，到「🌐 公网 agent 代理」那一步，填：
+```
+mzhhua|https://mzhhua.cn:9009/api/report|<mzhhua 的 AGENT_TOKEN>
+doogeee|https://doogeee.cn:9009/api/report|<doogeee 的 AGENT_TOKEN>
+usvps|https://usvps.mzhhua.cn:9009/api/report|<usvps 的 AGENT_TOKEN>
+```
+（`|` 分隔的是 name / url / token，多条用 `,` 分隔）
+
+**安全**：网页版没有独立 auth —— 跟 Android app 一样靠 relay URL 本身私有（自签 cert + 域名/IP 不公开）。如果要把网页版公开访问，建议套一层 basic auth（用 Nginx / Caddy 反代）。
+
+**限制**：
+- View-only，不能加/删服务器（管理还是用 Android app）
+- 趋势图只有 3xui 客户端流量（agent 只为这个做了 72h history）
+- 折线图 downsample 到 200 点（72h 原始数据可能 5 万+ 点，前端画不下）
+
 ## Android APK
 
 去 [Releases](https://github.com/mzhscan/monitor-status/releases) 下载 `monitor-status-*.apk` 装到手机。

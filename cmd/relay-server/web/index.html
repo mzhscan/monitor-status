@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f1117">
+  <title>星黎监控 · 网页版</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📡</text></svg>">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">📡</span>
+      <span class="title">星黎监控</span>
+      <span class="badge">网页版</span>
+    </div>
+    <div class="meta">
+      <span id="lastRefresh" class="last-refresh">加载中…</span>
+      <button id="refreshBtn" class="refresh-btn" title="手动刷新">↻</button>
+    </div>
+  </header>
+
+  <main id="app" class="container">
+    <section id="overview" class="overview">
+      <div class="stat-row">
+        <div class="stat-tile">
+          <div class="stat-label">机器总数</div>
+          <div class="stat-value" id="totalCount">—</div>
+        </div>
+        <div class="stat-tile stat-online">
+          <div class="stat-label">在线</div>
+          <div class="stat-value" id="onlineCount">—</div>
+        </div>
+        <div class="stat-tile stat-offline">
+          <div class="stat-label">离线</div>
+          <div class="stat-value" id="offlineCount">—</div>
+        </div>
+        <div class="stat-tile stat-xui">
+          <div class="stat-label">3xui 在线 / 总</div>
+          <div class="stat-value" id="xuiCount">—</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="machines" class="machines">
+      <p class="loading">正在加载机器列表…</p>
+    </section>
+  </main>
+
+  <!-- 详情弹窗 -->
+  <div id="detailModal" class="modal" hidden>
+    <div class="modal-card">
+      <button class="modal-close" id="modalClose">×</button>
+      <div id="modalContent"></div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <span>星黎监控网页版 · v2.4.26+ · 数据每 5s 自动刷新</span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

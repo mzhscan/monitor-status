@@ -324,6 +324,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/report", handleReport)
+	mux.HandleFunc("/api/traffic_72h", handleTraffic72h)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
@@ -385,6 +386,42 @@ func handleReport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(data); err != nil {
 		log.Printf("⚠️ encode report: %v", err)
+	}
+}
+
+// handleTraffic72h: GET /api/traffic_72h?email=xxx — 返回某个 3xui 客户端
+// 的 72h cumulative bytes 时间序列（每个 poll 一次 snapshot）。
+// 数据已经在 collector.traffic map 里了（agent 重启会从 traffic_72h.json 恢复），
+// 这里只是 dump 给网页版画"累计增长"折线图。
+// web 端自己 downsample 到 ~200 个点再画。
+func handleTraffic72h(w http.ResponseWriter, r *http.Request) {
+	token := r.Header.Get("X-Agent-Token")
+	if token == "" {
+		http.Error(w, `{"error":"缺少 X-Agent-Token"}`, 401)
+		return
+	}
+	cfgMu.RLock()
+	want := cfg.AgentToken
+	cfgMu.RUnlock()
+	if subtleConstEq(token, want) != 1 {
+		http.Error(w, `{"error":"token 无效"}`, 401)
+		return
+	}
+	email := r.URL.Query().Get("email")
+	if email == "" {
+		http.Error(w, `{"error":"缺少 email 参数"}`, http.StatusBadRequest)
+		return
+	}
+	hist := collector.Traffic72hHistory(email)
+	if hist == nil {
+		// cold start：还没采集过 → 返空数组，前端画 "—"
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`[]`))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(hist); err != nil {
+		log.Printf("⚠️ encode traffic_72h: %v", err)
 	}
 }
 
