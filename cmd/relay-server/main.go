@@ -112,11 +112,14 @@ type Slot struct {
 
 // ProxyEndpoint 描述一个**没走 push** 的公网 agent（agent 直接 serve /api/report，
 // relay 只是代理给网页版用）。来源：RELAY_AGENT_ENDPOINTS env，格式
-// "name1:url1:token1,name2:url2:token2"。
+// "name1:url1:agent_token1,name2:url2:agent_token2"。
+//
+// key 用 **name** 而不是 token —— 多台公网 agent 可能用同一个 token
+// （用户都图省事把 SSH 密码当 token），用 name 才不冲突。
 type ProxyEndpoint struct {
-	Name  string
-	URL   string
-	Token string
+	Name       string // 在网页版显示的名字，也是 proxy map 的 key
+	URL        string // agent 的 /api/report 完整 URL
+	AgentToken string // 实际发给 agent 的 X-Agent-Token（auth 用）
 }
 
 // proxyCache 缓存从公网 agent 拉到的最近一次数据。
@@ -134,8 +137,9 @@ type Server struct {
 	startTimeMs int64
 
 	// v2.4.26+: 公网 agent 的代理配置（不在 whitelist 里，因为它们不 push）
-	proxyEPs     map[string]*ProxyEndpoint // token -> endpoint
-	proxyCache   map[string]*proxyCache    // token -> cached data
+	// key = agent 的 name（不是 token，避免多台 agent 用同一个 token 时冲突）
+	proxyEPs     map[string]*ProxyEndpoint // name -> endpoint
+	proxyCache   map[string]*proxyCache    // name -> cached data
 	proxyCacheMu sync.RWMutex
 	insecureProxy bool // 代理拉公网 agent 时是否跳过 TLS 校验（默认 true，自签 cert 场景）
 }
@@ -284,8 +288,12 @@ func (s *Server) handleWebAgents(w http.ResponseWriter, r *http.Request) {
 	}
 	nowMs := time.Now().UnixMilli()
 	type agentInfo struct {
+		// Id 是 web app 调用 /web/api/* 时用的唯一标识符。
+		//   - push 模式：= push token（用 X-Agent-Token 头拉取旧 /api/report 也能用）
+		//   - proxy 模式：= proxy name（用户配置 RELAY_AGENT_ENDPOINTS 时填的 name）
+		// 这样多台公网 agent 用同一 token 也不会冲突
+		Id             string `json:"id"`
 		Name           string `json:"name"`
-		Token          string `json:"token"`
 		Source         string `json:"source"` // "pushed" / "proxy" / "configured"
 		Online         bool   `json:"online"`
 		LastReceivedMs int64  `json:"last_received_ms"`
@@ -318,7 +326,7 @@ func (s *Server) handleWebAgents(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		out = append(out, agentInfo{
-			Name: name, Token: tok, Source: "pushed",
+			Id: tok, Name: name, Source: "pushed",
 			Online: online, LastReceivedMs: slot.LastReceivedMs,
 			HasXUI: hasXUI, OnlineCount: onlineCount, TotalClients: totalClients,
 		})
@@ -328,11 +336,12 @@ func (s *Server) handleWebAgents(w http.ResponseWriter, r *http.Request) {
 
 	// 2) proxy 配置的公网 agent（不在 slots 里）
 	s.proxyCacheMu.RLock()
-	for tok, ep := range s.proxyEPs {
-		if seen[tok] {
+	for _, ep := range s.proxyEPs {
+		if seen[ep.Name] {
+			// push 模式已经用过这个 name（不太可能但要防御）
 			continue
 		}
-		cache, hasCache := s.proxyCache[tok]
+		cache, hasCache := s.proxyCache[ep.Name]
 		var lastMs int64
 		online := false
 		hasXUI := false
@@ -352,7 +361,7 @@ func (s *Server) handleWebAgents(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		out = append(out, agentInfo{
-			Name: ep.Name, Token: tok, Source: "proxy",
+			Id: ep.Name, Name: ep.Name, Source: "proxy",
 			Online: online, LastReceivedMs: lastMs,
 			HasXUI: hasXUI, OnlineCount: onlineCount, TotalClients: totalClients,
 		})
@@ -368,16 +377,17 @@ func (s *Server) handleWebAgents(w http.ResponseWriter, r *http.Request) {
 //   s.insecureProxy 默认 true：公网 agent 全是自签 cert，认证靠 X-Agent-Token
 //   安全性 = token 本身（32 字符随机），cert 只用来防 passive 监听
 //   改成 false = 严格校验 cert，需要把每台 agent 的自签 CA 加到系统 trust store
-func (s *Server) fetchProxy(token string) ([]byte, int64, error) {
+//   参数 name 是 web app 传来的 "id"（proxy 模式就是用户配的 name）
+func (s *Server) fetchProxy(name string) ([]byte, int64, error) {
 	s.proxyCacheMu.RLock()
-	ep, ok := s.proxyEPs[token]
+	ep, ok := s.proxyEPs[name]
 	var cache *proxyCache
 	if ok {
-		cache = s.proxyCache[token]
+		cache = s.proxyCache[name]
 	}
 	s.proxyCacheMu.RUnlock()
 	if !ok {
-		return nil, 0, fmt.Errorf("token 不在代理列表里")
+		return nil, 0, fmt.Errorf("name 不在代理列表里")
 	}
 
 	// 5s 内的缓存直接用
@@ -388,7 +398,7 @@ func (s *Server) fetchProxy(token string) ([]byte, int64, error) {
 
 	// fetch 公网 agent
 	req, _ := http.NewRequest("GET", ep.URL, nil)
-	req.Header.Set("X-Agent-Token", ep.Token)
+	req.Header.Set("X-Agent-Token", ep.AgentToken)
 	req.Header.Set("User-Agent", "monitor-status-relay/1.0")
 	client := &http.Client{Timeout: 10 * time.Second}
 	if s.insecureProxy {
@@ -415,26 +425,27 @@ func (s *Server) fetchProxy(token string) ([]byte, int64, error) {
 	}
 
 	s.proxyCacheMu.Lock()
-	s.proxyCache[token] = &proxyCache{Data: body, LastFetchMs: nowMs}
+	s.proxyCache[name] = &proxyCache{Data: body, LastFetchMs: nowMs}
 	s.proxyCacheMu.Unlock()
 	return body, nowMs, nil
 }
 
-// handleWebReport: GET /web/api/report?token=X → 跟 /api/report 一样，但 token 在 URL
+// handleWebReport: GET /web/api/report?id=X → 跟 /api/report 一样，但 id 在 URL
+//   id 含义：push 模式 = push token；proxy 模式 = 用户配置的 name（见 handleWebAgents）
 //   （header 在浏览器 fetch 里也能用，但 URL query 更直观，方便用户手测）
 func (s *Server) handleWebReport(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, `{"error":"请用 GET 请求"}`, http.StatusMethodNotAllowed)
 		return
 	}
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		http.Error(w, `{"error":"缺少 token 参数"}`, http.StatusBadRequest)
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, `{"error":"缺少 id 参数"}`, http.StatusBadRequest)
 		return
 	}
 	// 1) 优先用 push 缓存
 	s.mu.RLock()
-	slot, ok := s.slots[token]
+	slot, ok := s.slots[id]
 	s.mu.RUnlock()
 	if ok {
 		ageMs := time.Now().UnixMilli() - slot.LastReceivedMs
@@ -447,7 +458,7 @@ func (s *Server) handleWebReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 2) fallback 到 proxy（公网 agent 实时拉）
-	body, lastMs, err := s.fetchProxy(token)
+	body, lastMs, err := s.fetchProxy(id)
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusServiceUnavailable)
 		return
@@ -461,25 +472,24 @@ func (s *Server) handleWebReport(w http.ResponseWriter, r *http.Request) {
 	w.Write(body)
 }
 
-// handleWebTraffic72h: GET /web/api/traffic_72h?token=X&email=Y
+// handleWebTraffic72h: GET /web/api/traffic_72h?id=X&email=Y
 //   透传到 agent 的 /api/traffic_72h（push 缓存里没有原始 history）
+//   id 含义同 handleWebReport（push = push token；proxy = name）
 func (s *Server) handleWebTraffic72h(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, `{"error":"请用 GET 请求"}`, http.StatusMethodNotAllowed)
 		return
 	}
-	token := r.URL.Query().Get("token")
+	id := r.URL.Query().Get("id")
 	email := r.URL.Query().Get("email")
-	if token == "" || email == "" {
-		http.Error(w, `{"error":"缺少 token 或 email 参数"}`, http.StatusBadRequest)
+	if id == "" || email == "" {
+		http.Error(w, `{"error":"缺少 id 或 email 参数"}`, http.StatusBadRequest)
 		return
 	}
 	// push 缓存没有原始 history，必须实时拉
-	// 看是不是 push 的 → 用 slot.Data 里的 _last 字段查 agent url？不行，relay 不知道 agent url
-	// 所以 push 模式下不支持 traffic_72h（agent 不会主动 push 这部分数据）
-	// 简化：traffic_72h 只支持 proxy 模式（公网 agent 实时拉）
+	// 所以 traffic_72h 只支持 proxy 模式（公网 agent 实时拉）
 	s.proxyCacheMu.RLock()
-	ep, ok := s.proxyEPs[token]
+	ep, ok := s.proxyEPs[id]
 	s.proxyCacheMu.RUnlock()
 	if !ok {
 		http.Error(w, `{"error":"traffic_72h 仅支持公网 agent（push 模式未透传 history）"}`, http.StatusNotImplemented)
@@ -489,7 +499,7 @@ func (s *Server) handleWebTraffic72h(w http.ResponseWriter, r *http.Request) {
 	// 把 /api/report 换成 /api/traffic_72h
 	targetURL = strings.TrimSuffix(targetURL, "/api/report") + "/api/traffic_72h?email=" + url.QueryEscape(email)
 	req, _ := http.NewRequest("GET", targetURL, nil)
-	req.Header.Set("X-Agent-Token", ep.Token)
+	req.Header.Set("X-Agent-Token", ep.AgentToken)
 	req.Header.Set("User-Agent", "monitor-status-relay/1.0")
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
@@ -672,7 +682,8 @@ func main() {
 	}
 
 	// 解析公网 agent 代理列表（可选，没设就不代理公网 agent）
-	// 格式 "name1:url1:token1,name2:url2:token2"，url 形如 https://host:port/api/report
+	// 格式 "name1|url1|token1,name2|url2|token2"，url 形如 https://host:port/api/report
+	// 用 | 而不是 : 分隔 —— url 里可能含 :port，token 也不该有 :
 	proxyEPs := make(map[string]*ProxyEndpoint)
 	if *proxyEPsArg != "" {
 		for _, entry := range strings.Split(*proxyEPsArg, ",") {
@@ -680,33 +691,29 @@ func main() {
 			if entry == "" {
 				continue
 			}
-			// 格式 "name1:url1:token1"，url 含 "://"，从右往左找 "://" 来定位 url
-			idx := strings.Index(entry, "://")
-			if idx < 0 {
-				log.Printf("⚠️  代理条目缺 '://'，跳过: %s", entry)
+			parts := strings.Split(entry, "|")
+			if len(parts) != 3 {
+				log.Printf("⚠️  代理条目格式不对（期望 name|url|token），跳过: %s", entry)
 				continue
 			}
-			// name 是 "://" 前的最后一段（按最后一个 : 切）
-			lastColon := strings.LastIndex(entry[:idx], ":")
-			if lastColon < 0 {
-				log.Printf("⚠️  代理条目格式不对，跳过: %s", entry)
-				continue
-			}
-			name := strings.TrimSpace(entry[:lastColon])
-			rest := entry[lastColon+1:]
-			// rest = url:token，token 不含 :
-			idxTok := strings.LastIndex(rest, ":")
-			if idxTok < 0 {
-				log.Printf("⚠️  代理条目缺 token，跳过: %s", entry)
-				continue
-			}
-			agentURL := strings.TrimSpace(rest[:idxTok])
-			token := strings.TrimSpace(rest[idxTok+1:])
+			name := strings.TrimSpace(parts[0])
+			agentURL := strings.TrimSpace(parts[1])
+			token := strings.TrimSpace(parts[2])
 			if name == "" || agentURL == "" || token == "" {
 				log.Printf("⚠️  代理条目有空字段，跳过: %s", entry)
 				continue
 			}
-			proxyEPs[token] = &ProxyEndpoint{Name: name, URL: agentURL, Token: token}
+			if !strings.HasPrefix(agentURL, "http://") && !strings.HasPrefix(agentURL, "https://") {
+				log.Printf("⚠️  代理 url 必须以 http:// 或 https:// 开头，跳过: %s", entry)
+				continue
+			}
+			// 用 name 当 key —— 多台公网 agent 可能用同一 token（用户图省事把 SSH 密码当 token）
+			// 如果 name 重复就 warn + 跳过
+			if _, dup := proxyEPs[name]; dup {
+				log.Printf("⚠️  代理 name 重复 (%s)，跳过第二条: %s", name, entry)
+				continue
+			}
+			proxyEPs[name] = &ProxyEndpoint{Name: name, URL: agentURL, AgentToken: token}
 			log.Printf("🔗 公网 agent 代理: name=%s url=%s", name, agentURL)
 		}
 	}

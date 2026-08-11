@@ -5,7 +5,7 @@
 // 关键设计：
 // - 单页，不依赖任何外部库（不引 jQuery / 不引 chart.js）
 // - 折线图用内联 SVG 手写，downsample 到 ~200 点
-// - token 通过 query string 传（不存 localStorage，避免被共享设备上的别人偷看）
+// - agent 标识用 "id" 字段（push 模式 = push token；proxy 模式 = 用户配置的 name）
 
 (() => {
   "use strict";
@@ -13,9 +13,9 @@
   // ===== 全局状态 =====
   const state = {
     agents: [],          // /web/api/agents 返回的列表
-    reports: new Map(),  // token -> /web/api/report 响应
+    reports: new Map(),  // id -> /web/api/report 响应
     histories: new Map(),// email -> /web/api/traffic_72h 响应
-    selectedToken: null,
+    selectedId: null,
     selectedEmail: null,
     refreshTimer: null,
     lastRefreshMs: 0,
@@ -92,12 +92,12 @@
     state.agents = data.agents || [];
   }
 
-  async function loadReport(token) {
-    return fetchJSON(`${RELAY_BASE}/web/api/report?token=${encodeURIComponent(token)}`);
+  async function loadReport(id) {
+    return fetchJSON(`${RELAY_BASE}/web/api/report?id=${encodeURIComponent(id)}`);
   }
 
-  async function loadHistory(token, email) {
-    return fetchJSON(`${RELAY_BASE}/web/api/traffic_72h?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`);
+  async function loadHistory(id, email) {
+    return fetchJSON(`${RELAY_BASE}/web/api/traffic_72h?id=${encodeURIComponent(id)}&email=${encodeURIComponent(email)}`);
   }
 
   // ===== 渲染：概览 =====
@@ -131,7 +131,7 @@
     container.innerHTML = sorted.map(renderCard).join("");
 
     container.querySelectorAll(".machine-card").forEach((el) => {
-      el.addEventListener("click", () => openDetail(el.dataset.token));
+      el.addEventListener("click", () => openDetail(el.dataset.id));
     });
   }
 
@@ -149,7 +149,7 @@
     const cardClass = a.online ? "" : (a.last_received_ms > 0 ? "stale" : "offline");
 
     // mini stats 来自 reports 缓存（可能还没拉到）
-    const report = state.reports.get(a.token);
+    const report = state.reports.get(a.id);
     let miniStats = "";
     if (report && report.hardware) {
       const cpu = (report.hardware.cpu || {}).percent;
@@ -187,7 +187,7 @@
       : "";
 
     return `
-      <div class="machine-card ${cardClass}" data-token="${escapeHTML(a.token)}">
+      <div class="machine-card ${cardClass}" data-id="${escapeHTML(a.id)}">
         <div class="card-head">
           <div class="card-name">
             <span class="status-dot status-${statusClass}"></span>
@@ -204,18 +204,18 @@
 
   // ===== 渲染：详情弹窗 =====
 
-  async function openDetail(token) {
-    const agent = state.agents.find((a) => a.token === token);
+  async function openDetail(id) {
+    const agent = state.agents.find((a) => a.id === id);
     if (!agent) return;
-    state.selectedToken = token;
+    state.selectedId = id;
     state.selectedEmail = null;
     $("#detailModal").hidden = false;
     $("#modalContent").innerHTML = '<p class="loading">加载中…</p>';
     document.body.style.overflow = "hidden";
 
     try {
-      const report = await loadReport(token);
-      state.reports.set(token, report);
+      const report = await loadReport(id);
+      state.reports.set(id, report);
       $("#modalContent").innerHTML = renderDetail(agent, report);
       bindDetailEvents(agent, report);
     } catch (e) {
@@ -226,7 +226,7 @@
   function closeDetail() {
     $("#detailModal").hidden = true;
     document.body.style.overflow = "";
-    state.selectedToken = null;
+    state.selectedId = null;
     state.selectedEmail = null;
   }
 
@@ -307,7 +307,7 @@
             </thead>
             <tbody>
               ${clients.map((c) => `
-                <tr class="client-row" data-email="${escapeHTML(c.email)}" data-token="${escapeHTML(a.token)}">
+                <tr class="client-row" data-email="${escapeHTML(c.email)}" data-id="${escapeHTML(a.id)}">
                   <td><span class="online-dot ${c.online ? "yes" : "no"}"></span>${escapeHTML(c.email)}</td>
                   <td>${c.enable ? (c.online ? "在线" : "启用") : "停用"}</td>
                   <td>${c.up_72h_bytes != null ? fmtBytes(c.up_72h_bytes) : "—"}</td>
@@ -328,7 +328,7 @@
     return `
       <div class="detail-head">
         <h2>${escapeHTML(a.name)} <span class="status-dot status-${a.online ? "online" : (a.last_received_ms > 0 ? "stale" : "offline")}"></span></h2>
-        <div class="sub">token = ${escapeHTML(a.token.slice(0, 8))}… · ${a.source} · 数据于 ${report.timestamp ? fmtTime(report.timestamp * 1000) : "—"}</div>
+        <div class="sub">id = ${escapeHTML(a.id.slice(0, 8))}… · ${a.source} · 数据于 ${report.timestamp ? fmtTime(report.timestamp * 1000) : "—"}</div>
       </div>
 
       <div class="detail-section">
@@ -361,20 +361,20 @@
     $$("#modalContent .client-row").forEach((row) => {
       row.addEventListener("click", () => {
         const email = row.dataset.email;
-        const token = row.dataset.token;
-        openChart(token, email);
+        const id = row.dataset.id;
+        openChart(id, email);
       });
     });
   }
 
-  async function openChart(token, email) {
+  async function openChart(id, email) {
     state.selectedEmail = email;
     const host = $("#chartHost");
     if (!host) return;
     host.innerHTML = `<div class="chart-wrap"><div class="chart-title"><span>${escapeHTML(email)} · 加载中…</span></div></div>`;
     try {
-      const hist = await loadHistory(token, email);
-      host.innerHTML = renderChart(token, email, hist);
+      const hist = await loadHistory(id, email);
+      host.innerHTML = renderChart(id, email, hist);
     } catch (e) {
       host.innerHTML = `<div class="chart-wrap"><div class="chart-title"><span>${escapeHTML(email)}</span></div><div class="error-banner">加载失败：${escapeHTML(e.message)}</div></div>`;
     }
@@ -403,7 +403,7 @@
     return out;
   }
 
-  function renderChart(token, email, hist) {
+  function renderChart(id, email, hist) {
     if (!hist || hist.length === 0) {
       return `<div class="chart-wrap"><div class="chart-title"><span>${escapeHTML(email)}</span></div><div class="error-banner">暂无 72h 历史（agent 启动不到 5 分钟或这台机器没 3xui 客户端）</div></div>`;
     }
@@ -484,13 +484,13 @@
       await loadAgents();
 
       // 并行拉所有 agent 的最新 report
-      const tokens = state.agents.map((a) => a.token);
-      await Promise.allSettled(tokens.map(async (t) => {
+      const ids = state.agents.map((a) => a.id);
+      await Promise.allSettled(ids.map(async (id) => {
         try {
-          const r = await loadReport(t);
-          state.reports.set(t, r);
+          const r = await loadReport(id);
+          state.reports.set(id, r);
         } catch (_) {
-          state.reports.delete(t);
+          state.reports.delete(id);
         }
       }));
 
@@ -498,10 +498,10 @@
       renderOverview();
       renderMachines();
       // 详情打开中就保持原样，不强制重渲染（避免用户选中的 chart 被打断）
-      if (state.selectedToken) {
-        const sel = state.agents.find((a) => a.token === state.selectedToken);
+      if (state.selectedId) {
+        const sel = state.agents.find((a) => a.id === state.selectedId);
         if (sel) {
-          const rpt = state.reports.get(state.selectedToken);
+          const rpt = state.reports.get(state.selectedId);
           if (rpt) $("#modalContent").innerHTML = renderDetail(sel, rpt), bindDetailEvents(sel, rpt);
         }
       }
