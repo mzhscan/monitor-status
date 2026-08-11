@@ -5,6 +5,7 @@
 // 每个 tab 用 CupertinoTabView 拿系统 Navigator + iOS 27 Liquid Glass 容器。
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart' show BottomNavigationBarItem;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import '../store.dart';
@@ -13,7 +14,6 @@ import 'ios_detail_page.dart';
 import 'ios_error_details_page.dart';
 import 'ios_machines_page.dart';
 import 'ios_settings_page.dart';
-import 'ios_tab_bar.dart';
 
 class IOSApp extends StatefulWidget {
   final MonitorStore store;
@@ -106,32 +106,14 @@ class _IOSAppState extends State<IOSApp> {
 
   @override
   Widget build(BuildContext context) {
-    final items = const [
-      IOSTabBarItem(
-        icon: CupertinoIcons.square_grid_2x2,
-        activeIcon: CupertinoIcons.square_grid_2x2_fill,
-        label: '机器',
-      ),
-      IOSTabBarItem(
-        icon: CupertinoIcons.gear,
-        activeIcon: CupertinoIcons.gear_solid,
-        label: '设置',
-      ),
-      // 最右边 tab：添加（v2.4.31+）—— 选中时直接 push 添加服务器页
-      IOSTabBarItem(
-        icon: CupertinoIcons.add,
-        activeIcon: CupertinoIcons.add_circled_solid,
-        label: '添加',
-      ),
-    ];
-
     return Stack(
       children: [
         // 内容：IndexedStack（保留每个 tab 的状态）+ 背景
+        // 修：底部 padding 让出 CupertinoTabBar 高度
         Positioned.fill(
           child: Container(
-            // iOS 27 风格：简单白底，让系统 / 卡片自己处理任何细节
             color: const Color(0xFFFFFFFF),
+            padding: const EdgeInsets.only(bottom: 50),  // CupertinoTabBar 高度
             child: IndexedStack(
               index: _currentIndex,
               children: [
@@ -157,7 +139,6 @@ class _IOSAppState extends State<IOSApp> {
                   builder: (ctx) => IOSSettingsPage(store: widget.store),
                 ),
                 // 2: 添加 tab —— 直接放 IOSAddServerPage，跟机器/设置一样瞬间切换
-                // （之前 push modal 会有"从下往上"动画，跟其他 tab 体验不一致）
                 IOSAddServerPage(
                   // key 用 _editingServer.id 区分，避免编辑 A → 编辑 B 时状态错乱
                   key: ValueKey(_editingServer?.id ?? '__new__'),
@@ -174,30 +155,47 @@ class _IOSAppState extends State<IOSApp> {
             ),
           ),
         ),
-        // iOS 27 风格浮动小岛 tab bar
-        IOSTabBar(
-          currentIndex: _currentIndex,
-          onTap: (i) {
-            if (i == _currentIndex) {
-              // 点当前 tab：
-              //  - 机器/设置：弹回根（iOS 标准行为）
-              //  - 添加：不做事（保持当前 form 状态，不弹回机器 tab）
-              if (i == 0 || i == 1) {
-                _activeNavigator()?.popUntil((r) => r.isFirst);
+        // 修：用 Flutter CupertinoTabBar（调 iOS 27 UIKit UITabBar API，
+        // 系统自动应用 iOS 27 Liquid Glass 浮动小岛样式）。
+        // 之前用自造 IOSTabBar (BackdropFilter + 白底) 是"假"浮动小岛。
+        Align(
+          alignment: Alignment.bottomCenter,
+          child: CupertinoTabBar(
+            currentIndex: _currentIndex,
+            onTap: (i) {
+              if (i == _currentIndex) {
+                if (i == 0 || i == 1) {
+                  _activeNavigator()?.popUntil((r) => r.isFirst);
+                }
+                return;
               }
-              return;
-            }
-            if (i == 2) {
-              // 切到添加 tab：清空 _editingServer（保证是"新建"模式）
-              setState(() {
-                _editingServer = null;
-                _currentIndex = 2;
-              });
-              return;
-            }
-            setState(() => _currentIndex = i);
-          },
-          items: items,
+              if (i == 2) {
+                setState(() {
+                  _editingServer = null;
+                  _currentIndex = 2;
+                });
+                return;
+              }
+              setState(() => _currentIndex = i);
+            },
+            items: const [
+              BottomNavigationBarItem(
+                icon: Icon(CupertinoIcons.square_grid_2x2),
+                activeIcon: Icon(CupertinoIcons.square_grid_2x2_fill),
+                label: '机器',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(CupertinoIcons.gear),
+                activeIcon: Icon(CupertinoIcons.gear_solid),
+                label: '设置',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(CupertinoIcons.add),
+                activeIcon: Icon(CupertinoIcons.add_circled_solid),
+                label: '添加',
+              ),
+            ],
+          ),
         ),
       ],
     );
