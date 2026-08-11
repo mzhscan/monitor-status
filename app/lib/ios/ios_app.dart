@@ -173,14 +173,10 @@ class _IOSAppState extends State<IOSApp> {
           currentIndex: _currentIndex,
           onTap: (i) {
             if (i == _currentIndex) {
-              // 点当前 tab → 弹回根（iOS 标准行为）
-              // 修：在添加 tab 上点自己：清空 _editingServer + 切回机器
-              if (i == 2) {
-                setState(() {
-                  _editingServer = null;
-                  _currentIndex = 0;
-                });
-              } else {
+              // 点当前 tab：
+              //  - 机器/设置：弹回根（iOS 标准行为）
+              //  - 添加：不做事（保持当前 form 状态，不弹回机器 tab）
+              if (i == 0 || i == 1) {
                 _activeNavigator()?.popUntil((r) => r.isFirst);
               }
               return;
