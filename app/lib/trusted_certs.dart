@@ -50,6 +50,11 @@ class TrustedCerts {
     return stored != null && stored == fingerprint;
   }
 
+  /// v2.4.26+: 拿到所有信任的 cert（iOS 设置页显示数量用）
+  static Future<Map<String, String>> all() async {
+    return await _load();
+  }
+
   static Future<void> trust(String url, String fingerprint) async {
     final m = await _load();
     m[url] = fingerprint;
@@ -66,8 +71,6 @@ class TrustedCerts {
     await _save(m);
     await TrustedCertCache.refresh();
   }
-
-  static Future<Map<String, String>> all() => _load();
 }
 
 /// In-memory mirror of [TrustedCerts]'s persisted fingerprints, so that

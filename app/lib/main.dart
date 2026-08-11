@@ -1,13 +1,13 @@
-// App entry: wires MonitorStore to the UI tree, shows a popup-menu server
-// selector in the AppBar (Overview is always first), and adds an "+" button
-// to register a new server via the AddServerDialog.
-//
-// Visual style: solid white card with white border + soft shadow (v6 build)
-// or frosted glass (frosted build), selected at compile time via
-// --dart-define=GLASS_STYLE=...
+// App entry: wires MonitorStore to the UI tree.
+// v2.4.26+: iOS 平台自动用 iOS 27 液态玻璃风格（lib/ios/），
+//            Android 平台还是原来的 Material 3 风格（lib/overview_page.dart 等）。
+//            业务逻辑（API / store / models / errors）完全复用。
 
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:ui' as ui;
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,6 +15,8 @@ import 'about_page.dart';
 import 'add_server_dialog.dart';
 import 'dynamic_server_page.dart';
 import 'error_page.dart';
+import 'ios/ios_app.dart';
+import 'ios/ios_theme.dart' as ios_theme;
 import 'overview_page.dart';
 import 'store.dart';
 import 'toast.dart';
@@ -31,6 +33,16 @@ class MonitorApp extends StatefulWidget {
 }
 
 class _MonitorAppState extends State<MonitorApp> {
+  // v2.4.26+: 检测平台 — iOS 用液态玻璃 UI，Android 用 Material 3
+  bool get _isIOS {
+    if (kIsWeb) return false;
+    try {
+      return Platform.isIOS;
+    } catch (_) {
+      return false;
+    }
+  }
+
   DateTime? _lastBack;
   // v2.4.3 fix: 之前在 build() 里 new MonitorStore()，build 一次就 new 一次。
   // 搬到 initState 后整个 App 生命周期只有一份 store + 一组 polling timer。
@@ -64,6 +76,18 @@ class _MonitorAppState extends State<MonitorApp> {
 
   @override
   Widget build(BuildContext context) {
+    // v2.4.26+: iOS 27 液态玻璃 UI
+    if (_isIOS) {
+      return CupertinoApp(
+        title: '星黎监控',
+        debugShowCheckedModeBanner: false,
+        theme: const CupertinoThemeData(
+          primaryColor: ios_theme.IOSTheme.primary,
+          brightness: Brightness.dark,
+        ),
+        home: IOSApp(store: _store),
+      );
+    }
     return MaterialApp(
       title: '星黎监控',
       debugShowCheckedModeBanner: false,

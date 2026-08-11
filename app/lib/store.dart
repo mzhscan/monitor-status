@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
 import 'errors.dart';
 import 'models.dart';
+import 'trusted_certs.dart';
 
 /// `context.monitor` — InheritedWidget sugar so widgets deep in the tree
 /// can grab the [MonitorStore] without prop-drilling.
@@ -83,6 +84,20 @@ class MonitorStore extends ChangeNotifier {
   bool get isOverview => _currentServer == null;
   MonitorServer? get currentServer => _currentServer;
   List<MonitorServer> get servers => List.unmodifiable(_servers);
+
+  /// v2.4.26+：信任的 cert 数（iOS 设置页用）
+  int get trustedCertCount {
+    try {
+      // 不阻塞，用同步访问（实际从 SharedPreferences 缓存读）
+      return _trustedCertCount;
+    } catch (_) {
+      return 0;
+    }
+  }
+  int _trustedCertCount = 0;
+
+  /// v2.4.26+：app 版本（iOS 设置页用）
+  String get appVersion => '2.4.26';
 
   /// Aggregate per-server status for the overview page.
   Map<String, AgentData> get data {
@@ -286,6 +301,8 @@ class MonitorStore extends ChangeNotifier {
     // Server list (URLs, names, disk aliases, …) is plain JSON in
     // SharedPreferences. Tokens are Keystore-backed via flutter_secure_storage.
     final saved = await _loadServers();
+    // v2.4.26+: 异步加载信任的 cert 数（iOS 设置页用）
+    unawaited(_loadTrustedCertCount());
     // One-time migration: read legacy v2.2.x tokens from the JSON, push
     // them to secure storage, then strip them from the JSON. Idempotent.
     final legacy = await _extractLegacyTokens();
@@ -442,6 +459,24 @@ class MonitorStore extends ChangeNotifier {
     } finally {
       c.close();
     }
+  }
+
+  /// v2.4.26+: 加载信任的 cert 数量（后台异步调用，不阻塞 start）
+  Future<void> _loadTrustedCertCount() async {
+    try {
+      final m = await TrustedCerts.all();
+      _trustedCertCount = m.length;
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  /// v2.4.26+: 触发所有 server 重新拉数据（iOS 顶部刷新按钮用）
+  Future<void> refresh() async {
+    _error = null;
+    for (final p in _perServer.values) {
+      unawaited(p.pollOnce());
+    }
+    notifyListeners();
   }
 
   /// Trigger a manual poll of the current server (used by the "test" UI).
