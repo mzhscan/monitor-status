@@ -43,21 +43,30 @@ class _IOSSettingsPageState extends State<IOSSettingsPage> {
   Widget build(BuildContext context) {
     final hasErrors = IOSErrorDetailsPage.hasErrors(widget.store);
 
-    return CustomScrollView(
-      physics: const BouncingScrollPhysics(),
-      slivers: [
-        const CupertinoSliverNavigationBar(
-          largeTitle: Text('设置'),
-          backgroundColor: IOSTheme.glassDark,
+    return Column(
+      children: [
+        // 紧凑 nav bar（不带大标题）—— iOS 27 风格
+        const CupertinoNavigationBar(
+          backgroundColor: Color(0xFFFFFFFF),
           border: null,
-        ),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(
-            IOSTheme.paddingL, IOSTheme.paddingS,
-            IOSTheme.paddingL, 140,  // 留出浮动 tab bar 空间
+          middle: Text(
+            '设置',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+              color: IOSTheme.textPrimary,
+            ),
           ),
-          sliver: SliverList(
-            delegate: SliverChildListDelegate([
+        ),
+        // 内容：直接用 ListView
+        Expanded(
+          child: ListView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(
+              IOSTheme.paddingL, IOSTheme.paddingS,
+              IOSTheme.paddingL, 140,  // 留出浮动 tab bar 空间
+            ),
+            children: [
               // 关于入口
               GlassContainer(
                 padding: const EdgeInsets.symmetric(horizontal: IOSTheme.paddingL, vertical: 4),
@@ -102,7 +111,7 @@ class _IOSSettingsPageState extends State<IOSSettingsPage> {
                   ],
                 ),
               ),
-            ]),
+            ],
           ),
         ),
       ],

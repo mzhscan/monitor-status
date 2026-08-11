@@ -57,27 +57,37 @@ class _IOSMachinesPageState extends State<IOSMachinesPage> {
     return Stack(
       key: _stackKey,
       children: [
-        CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            CupertinoSliverNavigationBar(
-              largeTitle: const Text('机器'),
-              backgroundColor: IOSTheme.glassDark,
+        // iOS 27 风格紧凑顶部：SafeArea + CupertinoNavigationBar（不带大标题）+ 内容
+        Column(
+          children: [
+            // 顶部导航条：紧凑（44px）替代之前的大标题（96px+）
+            CupertinoNavigationBar(
+              backgroundColor: const Color(0xFFFFFFFF),
               border: null,
+              padding: const EdgeInsetsDirectional.only(start: 8, end: 8),
+              leading: null,
+              middle: const Text(
+                '总览',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color: IOSTheme.textPrimary,
+                ),
+              ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (store.isLoading)
                     const Padding(
-                      padding: EdgeInsets.only(right: 6),
+                      padding: EdgeInsets.only(right: 4),
                       child: CupertinoActivityIndicator(radius: 9),
                     ),
-                  // 错误指示器（store.error 存在时显示红 icon + 角标，跟安卓 _ErrorIndicatorButton 对齐）
+                  // 错误指示器（store.error 存在时显示红 icon + 角标）
                   if (store.error != null && store.error!.isNotEmpty)
                     CupertinoButton(
                       padding: EdgeInsets.zero,
+                      minSize: 32,
                       onPressed: () {
-                        // 切到 machines tab 后 push error-details
                         Navigator.of(context).pushNamed('/error-details');
                       },
                       child: Stack(
@@ -86,15 +96,14 @@ class _IOSMachinesPageState extends State<IOSMachinesPage> {
                           const Icon(
                             CupertinoIcons.exclamationmark_circle,
                             color: IOSTheme.danger,
-                            size: 22,
+                            size: 20,
                           ),
-                          // 右上角红点
                           Positioned(
                             top: -2,
                             right: -3,
                             child: Container(
-                              width: 8,
-                              height: 8,
+                              width: 7,
+                              height: 7,
                               decoration: BoxDecoration(
                                 color: IOSTheme.danger,
                                 shape: BoxShape.circle,
@@ -107,56 +116,23 @@ class _IOSMachinesPageState extends State<IOSMachinesPage> {
                     ),
                   CupertinoButton(
                     padding: EdgeInsets.zero,
-                    child: const Icon(CupertinoIcons.refresh, color: IOSTheme.primary, size: 22),
+                    minSize: 32,
                     onPressed: store.refresh,
+                    child: const Icon(CupertinoIcons.refresh, color: IOSTheme.primary, size: 20),
                   ),
                   CupertinoButton(
                     padding: EdgeInsets.zero,
-                    child: const Icon(CupertinoIcons.add, color: IOSTheme.primary, size: 22),
-                    onPressed: () => _openAddPage(),
+                    minSize: 32,
+                    onPressed: _openAddPage,
+                    child: const Icon(CupertinoIcons.add_circled, color: IOSTheme.primary, size: 22),
                   ),
                 ],
               ),
             ),
-            if (!hasServers)
-              const SliverFillRemaining(
-                hasScrollBody: false,
-                child: _EmptyView(),
-              )
-            else if (!hasData)
-              // 有 server 注册但还没拉到数据 → 轻转圈（不显示错误）
-              const SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(child: CupertinoActivityIndicator(radius: 14)),
-              )
-            else
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(
-                  IOSTheme.paddingL, IOSTheme.paddingS,
-                  IOSTheme.paddingL, 140,  // 留出浮动 tab bar 空间
-                ),
-                sliver: SliverList.separated(
-                  itemCount: servers.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (ctx, i) => _buildCardSlot(i),
-                ),
-              ),
-            // 列表底部"更新于"时间戳（跟安卓一致）
-            if (hasServers && hasData && store.lastSuccessAt != null)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 4, bottom: 24),
-                  child: Center(
-                    child: Text(
-                      '更新于 ${fmtTime(store.lastSuccessAt!)}',
-                      style: const TextStyle(
-                        color: IOSTheme.textTertiary,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+            // 内容区
+            Expanded(
+              child: _buildContent(hasServers, hasData, servers),
+            ),
           ],
         ),
         // 浮卡预览（拖动时显示）
@@ -164,6 +140,49 @@ class _IOSMachinesPageState extends State<IOSMachinesPage> {
         // 排序模式 banner
         if (_isSortMode && _draggingIndex == null) _buildSortModeBanner(),
       ],
+    );
+  }
+
+  Widget _buildContent(bool hasServers, bool hasData, List<MonitorServer> servers) {
+    if (!hasServers) {
+      return const _EmptyView();
+    }
+    if (!hasData) {
+      // 有 server 注册但还没拉到数据 → 轻转圈
+      return const Center(child: CupertinoActivityIndicator(radius: 14));
+    }
+    // ListView（去掉 sliver，直接用普通 ListView + ListView.builder）
+    return ListView.builder(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(
+        IOSTheme.paddingL, IOSTheme.paddingS,
+        IOSTheme.paddingL, 140,  // 留出浮动 tab bar 空间
+      ),
+      itemCount: servers.length + 1,  // +1 for "更新于" timestamp at bottom
+      itemBuilder: (ctx, i) {
+        if (i < servers.length) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _buildCardSlot(i),
+          );
+        }
+        // 最后一个 item：底部"更新于"时间戳
+        if (store.lastSuccessAt != null) {
+          return Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 24),
+            child: Center(
+              child: Text(
+                '更新于 ${fmtTime(store.lastSuccessAt!)}',
+                style: const TextStyle(
+                  color: IOSTheme.textTertiary,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+          );
+        }
+        return const SizedBox.shrink();
+      },
     );
   }
 
