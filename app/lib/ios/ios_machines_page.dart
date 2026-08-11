@@ -10,7 +10,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show LinearProgressIndicator, Colors, RefreshIndicator;
+import 'package:flutter/material.dart' show LinearProgressIndicator;
 
 import '../models.dart';
 import '../store.dart';
@@ -41,6 +41,24 @@ class _IOSMachinesPageState extends State<IOSMachinesPage> {
   bool _isSortMode = false;
 
   MonitorStore get store => widget.store;
+
+  @override
+  void initState() {
+    super.initState();
+    // 自己监听 store：父 IOSApp 不再监听（避免每次 5s 轮询 rebuild 整个 IndexedStack 树，
+    // 切 tab 时赶上 poll 会卡顿）。每页自己 addListener，只在数据真的变化时 rebuild 自己。
+    widget.store.addListener(_onChange);
+  }
+
+  @override
+  void dispose() {
+    widget.store.removeListener(_onChange);
+    super.dispose();
+  }
+
+  void _onChange() {
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -118,58 +136,65 @@ class _IOSMachinesPageState extends State<IOSMachinesPage> {
       // 有 server 注册但还没拉到数据 → 轻转圈
       return const Center(child: CupertinoActivityIndicator(radius: 14));
     }
-    // ListView（去掉 sliver，直接用普通 ListView + ListView.builder）
-    // v2.4.31+：加下拉刷新（替代之前右上角刷新按钮）
-    return RefreshIndicator(
-      color: IOSTheme.primary,
-      backgroundColor: Colors.white,
-      onRefresh: () async {
-        store.refresh();
-        // 等一小段时间让 spinner 显示出来再消失
-        await Future.delayed(const Duration(milliseconds: 600));
-      },
-      child: ListView.builder(
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
-        ),
-        padding: const EdgeInsets.fromLTRB(
-          IOSTheme.paddingL, IOSTheme.paddingS,
-          IOSTheme.paddingL, 140,  // 留出浮动 tab bar 空间
-        ),
-        itemCount: servers.length + 1,  // +1 for "更新于" timestamp at bottom
-        itemBuilder: (ctx, i) {
-          if (i < servers.length) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _buildCardSlot(i),
-            );
-          }
-          // 最后一个 item：底部"更新于"时间戳（v2.4.31+：粉色 chip 样式）
-          if (store.lastSuccessAt != null) {
-            return Padding(
-              padding: const EdgeInsets.only(top: 4, bottom: 24),
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: IOSTheme.cardChipBackground,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Text(
-                    '更新于 ${fmtTime(store.lastSuccessAt!)}',
-                    style: const TextStyle(
-                      color: IOSTheme.primary,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }
-          return const SizedBox.shrink();
-        },
+    // CustomScrollView + CupertinoSliverRefreshControl —— iOS 27 原生下拉刷新。
+    // 改之前用 Material 的 RefreshIndicator，在 iOS 27 上 spinner 会"卡变灰"。
+    // SliverList 替换 ListView.builder，行为一致。
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
       ),
+      slivers: [
+        CupertinoSliverRefreshControl(
+          onRefresh: () async {
+            store.refresh();
+            // 等一小段时间让 spinner 显示出来再消失
+            await Future.delayed(const Duration(milliseconds: 600));
+          },
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(
+            IOSTheme.paddingL, IOSTheme.paddingS,
+            IOSTheme.paddingL, 140,  // 留出浮动 tab bar 空间
+          ),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (ctx, i) {
+                if (i < servers.length) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _buildCardSlot(i),
+                  );
+                }
+                // 最后一个 item：底部"更新于"时间戳（v2.4.31+：粉色 chip 样式）
+                if (store.lastSuccessAt != null) {
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 4, bottom: 24),
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: IOSTheme.cardChipBackground,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Text(
+                          '更新于 ${fmtTime(store.lastSuccessAt!)}',
+                          style: const TextStyle(
+                            color: IOSTheme.primary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+              childCount: servers.length + 1,  // +1 for "更新于" timestamp at bottom
+            ),
+          ),
+        ),
+      ],
     );
   }
 

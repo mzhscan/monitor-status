@@ -14,7 +14,6 @@ import 'ios_error_details_page.dart';
 import 'ios_machines_page.dart';
 import 'ios_settings_page.dart';
 import 'ios_tab_bar.dart';
-import 'ios_theme.dart';
 
 class IOSApp extends StatefulWidget {
   final MonitorStore store;
@@ -29,26 +28,21 @@ class _IOSAppState extends State<IOSApp> {
   bool _firstLaunchChecked = false;
   bool _pendingFirstLaunchAdd = false;
 
-  // machines tab 的 Navigator state key —— first-launch 时通过它 push add page
+  // 每个 tab 的 Navigator state key（添加 tab 不需要，但 machines / settings 需要）
+  // 修 Bug 1：之前只有 _machinesNavigatorKey，导致设置 tab 时点不动添加
+  // —— push 走错 navigator 了
   final _machinesNavigatorKey = GlobalKey<NavigatorState>();
+  final _settingsNavigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
     super.initState();
-    widget.store.addListener(_onStoreChange);
+    // 不再监听 store —— 5s 轮询会触发 setState rebuild 整个 IndexedStack，
+    // 切 tab 时如果刚好赶上一次 poll = 视觉卡顿。
+    // store 变化由各 tab 自己监听。
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkFirstLaunch();
     });
-  }
-
-  @override
-  void dispose() {
-    widget.store.removeListener(_onStoreChange);
-    super.dispose();
-  }
-
-  void _onStoreChange() {
-    if (mounted) setState(() {});
   }
 
   // v2.4.3 对齐安卓行为：首启（且没有 server 时）自动弹添加服务器对话框。
@@ -65,13 +59,24 @@ class _IOSAppState extends State<IOSApp> {
     if (!shown && mounted && store.orderedServers.isEmpty) {
       await prefs.setBool('first_launch_shown', true);
       if (!mounted) return;
-      _pendingFirstLaunchAdd = true;
       // 等下一帧 push（确保 navigator 已就绪）
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _machinesNavigatorKey.currentState?.pushNamed('/add');
-        _pendingFirstLaunchAdd = false;
+        _activeNavigator()?.pushNamed('/add');
       });
+    }
+  }
+
+  // 修 Bug 1：返回当前 tab 的 Navigator
+  // （添加 tab 走的是当前 tab 的 navigator，保持 modal 在当前 tab 内）
+  NavigatorState? _activeNavigator() {
+    switch (_currentIndex) {
+      case 0:
+        return _machinesNavigatorKey.currentState;
+      case 1:
+        return _settingsNavigatorKey.currentState;
+      default:
+        return _machinesNavigatorKey.currentState;
     }
   }
 
@@ -130,6 +135,7 @@ class _IOSAppState extends State<IOSApp> {
                 ),
                 // 1: 设置 tab
                 CupertinoTabView(
+                  navigatorKey: _settingsNavigatorKey,
                   onGenerateRoute: _onGenerateRoute,
                   builder: (ctx) => IOSSettingsPage(store: widget.store),
                 ),
@@ -146,16 +152,13 @@ class _IOSAppState extends State<IOSApp> {
           onTap: (i) {
             if (i == 2) {
               // 最右边"添加"tab：点一下直接 push add page
-              // （add page 关闭时自动回到机器 tab）
-              _machinesNavigatorKey.currentState?.pushNamed('/add');
+              // 修 Bug 1：走当前 tab 的 Navigator（设置 tab 时也能正常 push）
+              _activeNavigator()?.pushNamed('/add');
               return;
             }
             if (i == _currentIndex) {
               // 点当前 tab → 弹回根（iOS 标准行为）
-              if (i == 0) {
-                _machinesNavigatorKey.currentState?.popUntil((r) => r.isFirst);
-              }
-              // 设置 tab 不做特殊处理
+              _activeNavigator()?.popUntil((r) => r.isFirst);
             } else {
               setState(() => _currentIndex = i);
             }
