@@ -1,20 +1,27 @@
-// iOS 27 液态玻璃 widgets —— 浅色（白+粉）主题
+// iOS 27 Liquid Glass widgets —— 简化版
 //
-// 关键：BackdropFilter + ImageFilter.blur 做出毛玻璃
-// 容器用半透明白 + 圆角 + 浅粉边
-// 背景：白 + 浅粉渐变 + 粉/紫光斑（保留 iOS 27 视觉感）
+// 苹果官方文档核心原则：
+// - "Reduce your use of custom backgrounds in controls and navigation
+//   elements" —— 自定义 BackdropFilter blur 反而干扰系统原生 Liquid Glass
+// - "Avoid overusing Liquid Glass effects" —— 只在最重要的元素上用
+// - 标准控件 (bar / sheet / popover) 已经自动 Liquid Glass，不要再画
+//
+// 所以这里：
+// - 不用 BackdropFilter
+// - 卡片用白底 + 细边 + 轻投影（普通 iOS 风格）
+// - StatusDot / StatTile 这些小元素保留（不涉及玻璃）
+// - GlassContainer / GlassPill 改为简单的 Container（避免跟系统打架）
 
-import 'dart:ui' as ui;
 import 'package:flutter/cupertino.dart';
 import 'ios_theme.dart';
 
-/// 液态玻璃容器（圆角矩形 + 高斯模糊背景）
+/// 简化卡片：白底 + 细边 + 轻投影
+/// 不再画 BackdropFilter blur（系统会处理 Liquid Glass）
 class GlassContainer extends StatelessWidget {
   final Widget child;
   final double borderRadius;
   final EdgeInsetsGeometry? padding;
   final EdgeInsetsGeometry? margin;
-  final double blur;
   final Color? color;
   final Color? borderColor;
   final double borderWidth;
@@ -30,7 +37,6 @@ class GlassContainer extends StatelessWidget {
     this.borderRadius = IOSTheme.radiusL,
     this.padding,
     this.margin,
-    this.blur = IOSTheme.blurM,
     this.color,
     this.borderColor,
     this.borderWidth = 0.5,
@@ -43,43 +49,29 @@ class GlassContainer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveColor = color ?? IOSTheme.glassLight;
+    final effectiveColor = color ?? const Color(0xFFFFFFFF);
     final effectiveBorder = border ??
-        Border.all(color: borderColor ?? IOSTheme.glassBorder, width: borderWidth);
+        Border.all(color: borderColor ?? const Color(0x1A000000), width: borderWidth);
 
     Widget body = Container(
       width: width,
       height: height,
       margin: margin,
+      padding: padding,
       decoration: BoxDecoration(
         color: effectiveColor,
         borderRadius: BorderRadius.circular(borderRadius),
         border: effectiveBorder,
+        // 跟安卓一致的软投影
         boxShadow: const [
-          // 软投影（粉色光晕）
           BoxShadow(
-            color: Color(0x1AFF6B95), // 粉色 10%
-            blurRadius: 18,
-            offset: Offset(0, 6),
-          ),
-          // 轻投影
-          BoxShadow(
-            color: Color(0x0F000000), // 黑色 6%
-            blurRadius: 8,
-            offset: Offset(0, 2),
+            color: Color(0x14000000), // 黑色 8%
+            blurRadius: 14,
+            offset: Offset(0, 4),
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(borderRadius),
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-          child: Container(
-            padding: padding,
-            child: child,
-          ),
-        ),
-      ),
+      child: child,
     );
 
     if (onTap != null || onLongPress != null) {
@@ -95,7 +87,7 @@ class GlassContainer extends StatelessWidget {
   }
 }
 
-/// 玻璃药丸按钮（iOS 27 风格：胶囊 + 毛玻璃）
+/// 玻璃药丸按钮：不再画 BackdropFilter，直接用 CupertinoButton
 class GlassPill extends StatelessWidget {
   final Widget child;
   final VoidCallback? onTap;
@@ -112,25 +104,20 @@ class GlassPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
+    return CupertinoButton(
+      padding: padding,
+      onPressed: onTap,
       borderRadius: BorderRadius.circular(100),
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-        child: CupertinoButton(
-          padding: padding,
-          onPressed: onTap,
-          borderRadius: BorderRadius.circular(100),
-          child: DefaultTextStyle.merge(
-            style: const TextStyle(color: IOSTheme.textPrimary, fontSize: 15),
-            child: child,
-          ),
-        ),
+      child: DefaultTextStyle.merge(
+        style: TextStyle(color: color ?? IOSTheme.textPrimary, fontSize: 15),
+        child: child,
       ),
     );
   }
 }
 
-/// iOS 27 风格背景：白 + 浅粉渐变 + 粉色光斑
+/// iOS 27 风格背景：简单白+淡粉渐变（让系统处理任何玻璃效果）
+/// 不要画光斑（iOS 标准 Liquid Glass 已经在系统控件上自动处理了）
 class IOSBackground extends StatelessWidget {
   final Widget child;
   const IOSBackground({super.key, required this.child});
@@ -142,68 +129,15 @@ class IOSBackground extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: IOSTheme.backgroundGradient,
-          stops: [0.0, 0.35, 0.7, 1.0],
+          colors: [
+            Color(0xFFFFFFFF),
+            Color(0xFFFFF5F8),
+            Color(0xFFFFFFFF),
+          ],
+          stops: [0.0, 0.5, 1.0],
         ),
       ),
-      child: Stack(
-        children: [
-          // 几个静态模糊光斑（液态玻璃的"光"感，浅色版本）
-          Positioned(
-            top: -100,
-            right: -50,
-            child: Container(
-              width: 300,
-              height: 300,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    IOSTheme.primary.withOpacity(0.10),
-                    IOSTheme.primary.withOpacity(0.0),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            top: 200,
-            left: -100,
-            child: Container(
-              width: 250,
-              height: 250,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    IOSTheme.primaryLight.withOpacity(0.20),
-                    IOSTheme.primaryLight.withOpacity(0.0),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: 100,
-            right: -80,
-            child: Container(
-              width: 280,
-              height: 280,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    const Color(0xFF7C5CFF).withOpacity(0.08),
-                    const Color(0xFF7C5CFF).withOpacity(0.0),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          // 主内容
-          child,
-        ],
-      ),
+      child: child,
     );
   }
 }
@@ -225,9 +159,9 @@ class StatusDot extends StatelessWidget {
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.5),
-            blurRadius: 6,
-            spreadRadius: 1,
+            color: color.withOpacity(0.4),
+            blurRadius: 4,
+            spreadRadius: 0.5,
           ),
         ],
       ),

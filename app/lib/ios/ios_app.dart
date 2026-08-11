@@ -1,13 +1,16 @@
-// iOS 27 风格主入口：浮动 tab bar + 内容切换
+// iOS 27 Liquid Glass 主入口：原生 CupertinoTabScaffold
 //
-// 跟安卓 main.dart 对齐：
-//   - 首启自动弹添加服务器对话框（v2.4.3+ 行为）
-//   - 错误详情页路由 /error-details
+// 苹果官方文档明确说：
+// - "Leverage system frameworks to adopt Liquid Glass automatically"
+//   标准组件 (bars, sheets, popovers, controls) 自动获得 Liquid Glass
+// - "Reduce your use of custom backgrounds in controls and navigation
+//   elements" —— 自己画 BackdropFilter blur 反而干扰系统原生 Liquid Glass
+// - tab bar 应该是浮动的"小岛"形状，inset from edge
 //
-// 视觉保持 iOS 27 Liquid Glass（LiquidTabBar + GlassContainer）。
+// 所以这里用 CupertinoTabScaffold（iOS 27 自动 Liquid Glass tab bar），
+// 不要自己画。CupertinoTabView 自带 Navigator，通过 navigatorKey 控制。
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show Colors, Scaffold;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import '../store.dart';
@@ -16,8 +19,6 @@ import 'ios_detail_page.dart';
 import 'ios_error_details_page.dart';
 import 'ios_machines_page.dart';
 import 'ios_settings_page.dart';
-import 'ios_glass.dart';
-import 'ios_tab_bar.dart';
 
 class IOSApp extends StatefulWidget {
   final MonitorStore store;
@@ -28,12 +29,11 @@ class IOSApp extends StatefulWidget {
 }
 
 class _IOSAppState extends State<IOSApp> {
-  int _currentIndex = 0;
-  final _machinesNavKey = GlobalKey<NavigatorState>();
-  final _settingsNavKey = GlobalKey<NavigatorState>();
-
   // 首启只弹一次（SharedPreferences 持久化）
   bool _firstLaunchChecked = false;
+
+  // machines tab 的 Navigator state key —— first-launch 时通过它 push add page
+  final _machinesNavigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
@@ -68,87 +68,64 @@ class _IOSAppState extends State<IOSApp> {
     if (!shown && mounted && store.orderedServers.isEmpty) {
       await prefs.setBool('first_launch_shown', true);
       if (!mounted) return;
-      // 切到 machines tab 然后 push add page
-      setState(() => _currentIndex = 0);
-      // 等待下一帧再 push，确保 navigator 已就绪
-      await Future.delayed(const Duration(milliseconds: 100));
-      if (!mounted) return;
-      _machinesNavKey.currentState?.pushNamed('/add');
+      // 等下一帧 push（确保 navigator 已就绪）
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _machinesNavigatorKey.currentState?.pushNamed('/add');
+      });
     }
   }
 
-  // 每个 tab 独立的 Navigator（标准 iOS 模式：tab 内 push 不会丢失其他 tab 的栈）
-  Widget _buildTabNavigator(int index, GlobalKey<NavigatorState> navKey, Widget rootPage) {
-    return Navigator(
-      key: navKey,
-      onGenerateRoute: (settings) {
-        Widget page = rootPage;
-        if (settings.name == '/detail') {
-          page = IOSDetailPage(store: widget.store, server: settings.arguments as MonitorServer);
-        } else if (settings.name == '/add') {
-          // arguments 可能是 MonitorServer（编辑）或 null（新增）
-          final initial = settings.arguments as MonitorServer?;
-          page = IOSAddServerPage(store: widget.store, initial: initial);
-        } else if (settings.name == '/error-details') {
-          page = IOSErrorDetailsPage(store: widget.store);
-        }
-        return CupertinoPageRoute(builder: (_) => page, settings: settings);
-      },
-    );
+  // 路由表（用 _machinesNavigatorKey 替代之前 buildTabNavigator 包装的方案）
+  Route<dynamic>? _onGenerateRoute(RouteSettings settings) {
+    Widget page;
+    if (settings.name == '/detail') {
+      page = IOSDetailPage(store: widget.store, server: settings.arguments as MonitorServer);
+    } else if (settings.name == '/add') {
+      final initial = settings.arguments as MonitorServer?;
+      page = IOSAddServerPage(store: widget.store, initial: initial);
+    } else if (settings.name == '/error-details') {
+      page = IOSErrorDetailsPage(store: widget.store);
+    } else {
+      return null;
+    }
+    return CupertinoPageRoute(builder: (_) => page, settings: settings);
   }
 
   @override
   Widget build(BuildContext context) {
-    final tabs = <LiquidTabItem>[
-      const LiquidTabItem(
-        icon: CupertinoIcons.square_grid_2x2,
-        activeIcon: CupertinoIcons.square_grid_2x2_fill,
-        label: '机器',
+    return CupertinoTabScaffold(
+      tabBar: CupertinoTabBar(
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(CupertinoIcons.square_grid_2x2),
+            activeIcon: Icon(CupertinoIcons.square_grid_2x2_fill),
+            label: '机器',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(CupertinoIcons.gear),
+            activeIcon: Icon(CupertinoIcons.gear_solid),
+            label: '设置',
+          ),
+        ],
       ),
-      const LiquidTabItem(
-        icon: CupertinoIcons.gear,
-        activeIcon: CupertinoIcons.gear_solid,
-        label: '设置',
-      ),
-    ];
-
-    Widget body;
-    switch (_currentIndex) {
-      case 0:
-        body = _buildTabNavigator(0, _machinesNavKey, IOSMachinesPage(store: widget.store));
-        break;
-      case 1:
-        body = _buildTabNavigator(1, _settingsNavKey, IOSSettingsPage(store: widget.store));
-        break;
-      default:
-        body = const SizedBox.shrink();
-    }
-
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: IOSBackground(
-        child: Stack(
-          children: [
-            Positioned.fill(child: body),
-            LiquidTabBar(
-              currentIndex: _currentIndex,
-              onTap: (i) {
-                if (i == _currentIndex) {
-                  // 点当前 tab → 弹回根（iOS 标准行为）
-                  if (i == 0) {
-                    _machinesNavKey.currentState?.popUntil((r) => r.isFirst);
-                  } else {
-                    _settingsNavKey.currentState?.popUntil((r) => r.isFirst);
-                  }
-                } else {
-                  setState(() => _currentIndex = i);
-                }
-              },
-              items: tabs,
-            ),
-          ],
-        ),
-      ),
+      tabBuilder: (context, index) {
+        switch (index) {
+          case 0:
+            return CupertinoTabView(
+              navigatorKey: _machinesNavigatorKey,
+              onGenerateRoute: _onGenerateRoute,
+              builder: (ctx) => IOSMachinesPage(store: widget.store),
+            );
+          case 1:
+            return CupertinoTabView(
+              onGenerateRoute: _onGenerateRoute,
+              builder: (ctx) => IOSSettingsPage(store: widget.store),
+            );
+          default:
+            return const SizedBox.shrink();
+        }
+      },
     );
   }
 }
