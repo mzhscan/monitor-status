@@ -11,7 +11,7 @@
 // 视觉保持 iOS 27 Liquid Glass。
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show Colors;
+import 'package:flutter/material.dart' show Colors, LinearProgressIndicator;
 import '../models.dart';
 import '../store.dart';
 import '../widgets.dart' show formatBytes;
@@ -283,21 +283,15 @@ class _IOSDetailPageState extends State<IOSDetailPage> {
               ],
             ),
             const SizedBox(height: 6),
-            Container(
-              height: 6,
-              decoration: BoxDecoration(
-                color: IOSTheme.trackBackground,
-                borderRadius: BorderRadius.circular(3),
-              ),
-              child: FractionallySizedBox(
-                alignment: Alignment.centerLeft,
-                widthFactor: (pct / 100).clamp(0.0, 1.0),
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [color, color.withOpacity(0.7)]),
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
+            // v2.4.28+：用 LinearProgressIndicator（跟安卓 UsageBar 一致），
+            // solid fill + 明确 track。之前自画渐变 fill 0.7 alpha 会糊掉
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: (pct.clamp(0, 100)) / 100,
+                minHeight: 8,
+                backgroundColor: IOSTheme.trackBackground,
+                valueColor: AlwaysStoppedAnimation<Color>(color),
               ),
             ),
             if (hint != null) ...[
@@ -652,22 +646,16 @@ class _DiskRow extends StatelessWidget {
                 const Icon(CupertinoIcons.pencil, size: 14, color: IOSTheme.textTertiary),
               ],
             ),
-            const SizedBox(height: 4),
-            Container(
-              height: 6,
-              decoration: BoxDecoration(
-                color: IOSTheme.trackBackground,
-                borderRadius: BorderRadius.circular(3),
-              ),
-              child: FractionallySizedBox(
-                alignment: Alignment.centerLeft,
-                widthFactor: (disk.percent / 100).clamp(0.0, 1.0),
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [color, color.withOpacity(0.7)]),
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
+            const SizedBox(height: 6),
+            // v2.4.28+：用 LinearProgressIndicator（跟安卓 UsageBar 一致），
+            // 跟资源占用大条同样改
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: (disk.percent.clamp(0, 100)) / 100,
+                minHeight: 8,
+                backgroundColor: IOSTheme.trackBackground,
+                valueColor: AlwaysStoppedAnimation<Color>(color),
               ),
             ),
             const SizedBox(height: 4),

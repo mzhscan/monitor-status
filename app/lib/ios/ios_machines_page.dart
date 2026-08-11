@@ -10,6 +10,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart' show LinearProgressIndicator;
 
 import '../models.dart';
 import '../store.dart';
@@ -888,22 +889,17 @@ class _MiniUsageBar extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 4),
-        Container(
-          height: 6,
-          decoration: BoxDecoration(
-            color: IOSTheme.trackBackground,
-            borderRadius: BorderRadius.circular(3),
-          ),
-          child: FractionallySizedBox(
-            alignment: Alignment.centerLeft,
-            widthFactor: (percent / 100).clamp(0.0, 1.0),
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(colors: [color, color.withOpacity(0.7)]),
-                borderRadius: BorderRadius.circular(3),
-              ),
-            ),
+        const SizedBox(height: 6),
+        // v2.4.28+：用 LinearProgressIndicator（跟安卓 UsageBar 一样），
+        // 之前手画的 Container+FractionallySizedBox 渐变 fill 0.7 alpha 会
+        // 跟 track 颜色叠在一起糊掉，看不到总条
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: (percent.clamp(0, 100)) / 100,
+            minHeight: 8,
+            backgroundColor: IOSTheme.trackBackground,
+            valueColor: AlwaysStoppedAnimation<Color>(color),
           ),
         ),
       ],
