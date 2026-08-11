@@ -25,11 +25,13 @@ class IOSApp extends StatefulWidget {
 
 class _IOSAppState extends State<IOSApp> {
   int _currentIndex = 0;
-  // 修 Bug A：点"添加"tab 之前所在的 tab（机器=0 / 设置=1），
-  // add page pop 时回到原 tab
-  int _previousIndex = 0;
+  // 修 Bug A：添加 tab 独立成"action button"模式 —— _isAddOpen 控制 tab 2 高亮，
+  // 不污染 _currentIndex（永远 0/1）。这样：
+  // 1. 切到 _currentIndex=0 不会再被"上一次点过添加"卡住
+  // 2. add page 0.4s 滑入期间不会显示 SizedBox.shrink() 空白
+  // 3. add page 开着时切到机器/设置 → 一次性 pop + 切 tab，没 race condition
+  bool _isAddOpen = false;
   bool _firstLaunchChecked = false;
-  bool _pendingFirstLaunchAdd = false;
 
   // 每个 tab 的 Navigator state key（添加 tab 不需要，但 machines / settings 需要）
   // 修 Bug 1：之前只有 _machinesNavigatorKey，导致设置 tab 时点不动添加
@@ -65,7 +67,11 @@ class _IOSAppState extends State<IOSApp> {
       // 等下一帧 push（确保 navigator 已就绪）
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _activeNavigator()?.pushNamed('/add');
+        _activeNavigator()?.pushNamed('/add').then((_) {
+          if (!mounted) return;
+          setState(() => _isAddOpen = false);
+        });
+        setState(() => _isAddOpen = true);
       });
     }
   }
@@ -159,18 +165,26 @@ class _IOSAppState extends State<IOSApp> {
         ),
         // iOS 27 风格浮动小岛 tab bar
         IOSTabBar(
-          currentIndex: _currentIndex,
-          onTap: (i) async {
+          // 修 Bug A：add page 开着时 tab 2 高亮（不依赖 _currentIndex）
+          currentIndex: _isAddOpen ? 2 : _currentIndex,
+          onTap: (i) {
             if (i == 2) {
-              // 最右边"添加"tab：点一下直接 push add page
-              // 修 Bug 1：走当前 tab 的 Navigator（设置 tab 时也能正常 push）
-              // 修 Bug A：保存原 tab index，先 setState 让"添加"tab 显示选中状态，
-              // push 完（add page pop 后）回到原 tab
-              _previousIndex = _currentIndex;
-              setState(() => _currentIndex = 2);
-              await _activeNavigator()?.pushNamed('/add');
-              if (!mounted) return;
-              setState(() => _currentIndex = _previousIndex);
+              // 最右边"添加"tab：push add page（独立 action，不切 _currentIndex）
+              // 修 Bug A：用 .then 处理 pop 回调，避免 await 阻塞 onTap
+              setState(() => _isAddOpen = true);
+              _activeNavigator()?.pushNamed('/add').then((_) {
+                if (!mounted) return;
+                setState(() => _isAddOpen = false);
+              });
+              return;
+            }
+            if (_isAddOpen) {
+              // add page 开着时切到机器/设置：一次性 pop + 切 tab，没 race
+              setState(() {
+                _isAddOpen = false;
+                _currentIndex = i;
+              });
+              _activeNavigator()?.popUntil((r) => r.isFirst);
               return;
             }
             if (i == _currentIndex) {
