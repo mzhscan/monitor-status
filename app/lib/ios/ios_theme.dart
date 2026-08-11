@@ -34,8 +34,9 @@ class IOSTheme {
   static const Color glassBorder = Color(0x55FFB6C1); // 浅粉边
 
   // 进度条 / 用量条 用的浅色轨道（跟安卓 Color(0x22FFB6C1) 风格一致）
-  // 实色但淡淡的：之前 0xFFFFB0C5 太浓 → 0xFFFFD9E1 浅色但能看清
-  static const Color trackBackground = Color(0xFFFFD9E1);
+  // v2.4.30: 0xFFFFD9E1 用户说还浓 → 再淡 50%（每通道向 255 拉一半）
+  // → 0xFFFFEAF0 接近白但还能看出粉调
+  static const Color trackBackground = Color(0xFFFFEAF0);
 
   // 文字（深色，跟安卓一致）
   static const Color textPrimary = Color(0xFF1A1A1A);
