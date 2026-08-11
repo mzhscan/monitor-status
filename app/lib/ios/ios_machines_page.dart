@@ -890,10 +890,10 @@ class _MiniUsageBar extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Container(
-          height: 4,
+          height: 6,
           decoration: BoxDecoration(
-            color: IOSTheme.glassLight,
-            borderRadius: BorderRadius.circular(2),
+            color: IOSTheme.trackBackground,
+            borderRadius: BorderRadius.circular(3),
           ),
           child: FractionallySizedBox(
             alignment: Alignment.centerLeft,
@@ -901,7 +901,7 @@ class _MiniUsageBar extends StatelessWidget {
             child: Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(colors: [color, color.withOpacity(0.7)]),
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: BorderRadius.circular(3),
               ),
             ),
           ),

@@ -33,6 +33,11 @@ class IOSTheme {
   static const Color glassDark = Color(0xCCFFFFFF);  // 80% 白（更实）
   static const Color glassBorder = Color(0x55FFB6C1); // 浅粉边
 
+  // 进度条 / 用量条 用的浅色轨道（跟安卓 Color(0x22FFB6C1) 风格一致）
+  // 用更明显的 solid 浅粉 —— 0x33/0x66 alpha 在白卡上看不清
+  // v2.4.27+ 反馈：必须能直接看出总条长度
+  static const Color trackBackground = Color(0xFFFFC4D2);
+
   // 文字（深色，跟安卓一致）
   static const Color textPrimary = Color(0xFF1A1A1A);
   static const Color textSecondary = Color(0xFF2C2C2C);
