@@ -19,7 +19,6 @@ import 'ios/ios_app.dart';
 import 'ios/ios_theme.dart' as ios_theme;
 import 'overview_page.dart';
 import 'store.dart';
-import 'toast.dart';
 
 void main() {
   runApp(const MonitorApp());
@@ -53,6 +52,13 @@ class _MonitorAppState extends State<MonitorApp> {
   /// v2.4.5: 接收 [ctx] 参数，因为 build() 的 context 是 State 的 context，
   /// 它的位置在 MaterialApp 之上，找不到 MaterialApp 内部的 rootOverlay。
   /// 调用方需要从 home: 里的 Builder 取一个 innerContext 传进来。
+  ///
+  /// 重做：之前用自造 AppToast（基于 OverlayEntry）显示「再按一次返回桌面」，
+  /// 但 release 渲染 / Overlay 边界 / 自造 Container 都有"黄线"等视觉 bug 风险。
+  /// 改用 Flutter 标准 ScaffoldMessenger + SnackBar（系统组件 + 系统定位 + 系统动画）：
+  ///   - 不会出现"两条黄线"等自造 widget 边界问题
+  ///   - duration 改成 2 秒，跟 _handleBack 时间窗口 2000ms 对齐（之前 toast 1.5s 太短，
+  ///     用户看到 toast 消失后再按可能踩 2s 边界误判）
   bool _handleBack(BuildContext ctx) {
     final now = DateTime.now();
     if (_lastBack != null &&
@@ -60,7 +66,13 @@ class _MonitorAppState extends State<MonitorApp> {
       return true; // 允许退出
     }
     _lastBack = now;
-    AppToast.show(ctx, '再按一次返回桌面');
+    ScaffoldMessenger.of(ctx).showSnackBar(
+      const SnackBar(
+        content: Text('再按一次返回桌面'),
+        duration: Duration(seconds: 2),
+        behavior: SnackBarBehavior.fixed,  // 不用 floating 避免自造 border
+      ),
+    );
     return false; // 阻止退出
   }
 
