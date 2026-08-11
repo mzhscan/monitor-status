@@ -182,53 +182,7 @@ button { font: inherit; }
   color: #6b7280;
 }
 
-/* ===== 详情弹窗 ===== */
-.modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 200;
-  padding: 16px;
-  animation: fadeIn 0.2s ease;
-}
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-.modal[hidden] { display: none; }
-.modal-card {
-  background: #1a1d27;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
-  padding: 24px;
-  max-width: 900px;
-  width: 100%;
-  max-height: 90vh;
-  overflow-y: auto;
-  position: relative;
-  animation: slideUp 0.25s ease;
-}
-@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-.modal-close {
-  position: absolute;
-  top: 12px; right: 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border: none;
-  color: #e6e8ee;
-  width: 32px; height: 32px;
-  border-radius: 50%;
-  cursor: pointer;
-  font-size: 20px;
-  line-height: 1;
-}
-.modal-close:hover { background: rgba(255, 255, 255, 0.1); }
-
-.detail-head { margin-bottom: 20px; }
-.detail-head h2 { margin: 0 0 4px 0; font-size: 22px; }
-.detail-head .sub { color: #8b91a0; font-size: 12px; }
-
+/* ===== v2.4.26+: 详情（card 内部展开，不再用 modal） ===== */
 .detail-section { margin-bottom: 24px; }
 .section-title {
   font-size: 13px;
@@ -237,6 +191,85 @@ button { font: inherit; }
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 10px;
+}
+
+/* card 头右侧的容器（状态 + 上下移按钮） */
+.card-head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* 展开/收起箭头 */
+.expand-arrow {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 11px;
+  color: #6b7280;
+  transition: transform 0.2s ease;
+}
+.expand-arrow.open {
+  transform: rotate(180deg);
+  color: #4f8ef7;
+}
+
+/* 上下移按钮组 */
+.sort-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sort-up, .sort-down {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #8b91a0;
+  width: 22px;
+  height: 18px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 9px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.15s;
+}
+.sort-up:hover, .sort-down:hover {
+  background: rgba(79, 142, 247, 0.2);
+  color: #4f8ef7;
+  border-color: rgba(79, 142, 247, 0.3);
+}
+.sort-up:active, .sort-down:active {
+  transform: scale(0.9);
+}
+
+/* 展开的 card：PC 端占整行，移动端只变高 */
+.machine-card.expanded {
+  /* PC 端（多列） */
+  grid-column: 1 / -1;
+  border-color: rgba(79, 142, 247, 0.4);
+  background: rgba(30, 33, 44, 0.85);
+  transition: grid-column 0.25s ease, background 0.2s ease;
+}
+.machine-card .card-detail {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  animation: slideDown 0.25s ease;
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* 移动端（单列）展开效果：占整宽 + 稍暗背景区分 */
+@media (max-width: 719px) {
+  .machine-card.expanded {
+    /* grid-column 1/-1 在单列下等于没变，但 border 还能区分 */
+    background: rgba(30, 33, 44, 0.95);
+  }
 }
 
 .bar-row { margin-bottom: 12px; }

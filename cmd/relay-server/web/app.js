@@ -15,12 +15,38 @@
     agents: [],          // /web/api/agents 返回的列表
     reports: new Map(),  // id -> /web/api/report 响应
     histories: new Map(),// email -> /web/api/traffic_72h 响应
-    selectedId: null,
+    expandedId: null,    // v2.4.26+: 当前展开的 card id（null = 都没展开）
     selectedEmail: null,
     refreshTimer: null,
     lastRefreshMs: 0,
     refreshError: null,
+    sortOrder: loadSortOrder(),  // v2.4.26+: 用户手动排序的 id 列表，存 localStorage
   };
+
+  // v2.4.26+: 排序顺序持久化（localStorage）
+  // 用户用 card 头部的上下箭头调整顺序，刷新页面后保留
+  const SORT_KEY = "monitor-status-card-order-v1";
+  function loadSortOrder() {
+    try { return JSON.parse(localStorage.getItem(SORT_KEY) || "[]"); }
+    catch (_) { return []; }
+  }
+  function saveSortOrder() {
+    try { localStorage.setItem(SORT_KEY, JSON.stringify(state.sortOrder)); }
+    catch (_) { /* localStorage 满了或被禁用，忽略 */ }
+  }
+  function moveCard(id, dir) {
+    const idx = state.sortOrder.indexOf(id);
+    if (idx < 0) {
+      // 第一次出现这个 id，加到末尾
+      state.sortOrder.push(id);
+    }
+    const newIdx = dir === "up" ? Math.max(0, idx - 1) : Math.min(state.sortOrder.length - 1, idx + 1);
+    if (newIdx === idx) return;
+    state.sortOrder.splice(idx, 1);
+    state.sortOrder.splice(newIdx, 0, id);
+    saveSortOrder();
+    renderMachines();
+  }
 
   const RELAY_BASE = location.origin;  // 网页本身挂在 relay 上，API 同源
   const REFRESH_INTERVAL_MS = 5000;
@@ -123,19 +149,64 @@
       container.innerHTML = '<p class="loading">还没有机器。检查 relay 的 token 配置。</p>';
       return;
     }
-    // 按 (offline 排后, name 字典序) 排序
+    // v2.4.26+: 排序逻辑
+    // 1) 用户手动排的顺序（localStorage 里的 state.sortOrder）优先
+    // 2) 新出现的 machine 排到末尾
+    // 3) 都不在用户列表时：按 online 排（在线的优先）
+    const userOrder = state.sortOrder;
     const sorted = [...state.agents].sort((a, b) => {
+      const ia = userOrder.indexOf(a.id);
+      const ib = userOrder.indexOf(b.id);
+      if (ia >= 0 && ib >= 0) return ia - ib;
+      if (ia >= 0) return -1;
+      if (ib >= 0) return 1;
       if (a.online !== b.online) return a.online ? -1 : 1;
       return (a.name || "").localeCompare(b.name || "");
     });
-    container.innerHTML = sorted.map(renderCard).join("");
+    // 把首次出现的 id 同步进 sortOrder（保持顺序持久化）
+    sorted.forEach((a) => {
+      if (!userOrder.includes(a.id)) userOrder.push(a.id);
+    });
 
+    container.innerHTML = sorted.map((a) => renderCard(a, state.expandedId === a.id)).join("");
+
+    // 绑定事件
     container.querySelectorAll(".machine-card").forEach((el) => {
-      el.addEventListener("click", () => openDetail(el.dataset.id));
+      const id = el.dataset.id;
+      // 点击 card 切换展开/收起（除非点的是按钮）
+      el.addEventListener("click", (e) => {
+        if (e.target.closest("button")) return;  // 忽略按钮点击
+        toggleExpand(id);
+      });
+    });
+    container.querySelectorAll(".sort-up").forEach((el) => {
+      el.addEventListener("click", (e) => { e.stopPropagation(); moveCard(el.dataset.id, "up"); });
+    });
+    container.querySelectorAll(".sort-down").forEach((el) => {
+      el.addEventListener("click", (e) => { e.stopPropagation(); moveCard(el.dataset.id, "down"); });
     });
   }
 
-  function renderCard(a) {
+  // v2.4.26+: 展开/收起切换
+  function toggleExpand(id) {
+    if (state.expandedId === id) {
+      state.expandedId = null;
+    } else {
+      state.expandedId = id;
+      // 展开时立即拉一次 detail 数据（如果还没有）
+      if (!state.reports.has(id)) {
+        loadReport(id).then((r) => {
+          state.reports.set(id, r);
+          renderMachines();
+        }).catch(() => { /* 错误会显示在 card 上 */ });
+        renderMachines();
+        return;
+      }
+    }
+    renderMachines();
+  }
+
+  function renderCard(a, expanded) {
     let statusClass = "unknown";
     let statusText = "未知";
     if (a.source === "pushed" || a.source === "proxy") {
@@ -147,6 +218,7 @@
       statusText = "未配置";
     }
     const cardClass = a.online ? "" : (a.last_received_ms > 0 ? "stale" : "offline");
+    const expandedClass = expanded ? " expanded" : "";
 
     // mini stats 来自 reports 缓存（可能还没拉到）
     const report = state.reports.get(a.id);
@@ -186,51 +258,46 @@
       ? '<span class="source-tag" title="relay 代理拉取">proxy</span>'
       : "";
 
+    // v2.4.26+: 排序按钮（每张卡头部都有）
+    const sortBtns = `
+      <div class="sort-btns">
+        <button class="sort-up" data-id="${escapeHTML(a.id)}" title="上移" aria-label="上移">▲</button>
+        <button class="sort-down" data-id="${escapeHTML(a.id)}" title="下移" aria-label="下移">▼</button>
+      </div>`;
+
+    // v2.4.26+: 展开时把详情渲染在 card 内部
+    const expandArrow = `<span class="expand-arrow ${expanded ? "open" : ""}">▾</span>`;
+    const expandContent = expanded ? `<div class="card-detail">${renderDetailBody(a, report)}</div>` : "";
+
     return `
-      <div class="machine-card ${cardClass}" data-id="${escapeHTML(a.id)}">
+      <div class="machine-card ${cardClass}${expandedClass}" data-id="${escapeHTML(a.id)}">
         <div class="card-head">
           <div class="card-name">
             <span class="status-dot status-${statusClass}"></span>
             ${escapeHTML(a.name)}
             ${sourceTag}
+            ${expandArrow}
           </div>
-          <div class="status-text">${statusText}</div>
+          <div class="card-head-right">
+            <div class="status-text">${statusText}</div>
+            ${sortBtns}
+          </div>
         </div>
         <div class="card-stats">${miniStats}</div>
         ${xuiStrip}
         <div class="card-footer">${a.last_received_ms ? "更新于 " + fmtTime(a.last_received_ms) + " · " + fmtAge(Date.now() - a.last_received_ms) : "从未上报"}</div>
+        ${expandContent}
       </div>`;
   }
 
-  // ===== 渲染：详情弹窗 =====
+  // ===== 渲染：详情（在 card 内部展开，不再用 modal） =====
 
-  async function openDetail(id) {
-    const agent = state.agents.find((a) => a.id === id);
-    if (!agent) return;
-    state.selectedId = id;
-    state.selectedEmail = null;
-    $("#detailModal").hidden = false;
-    $("#modalContent").innerHTML = '<p class="loading">加载中…</p>';
-    document.body.style.overflow = "hidden";
-
-    try {
-      const report = await loadReport(id);
-      state.reports.set(id, report);
-      $("#modalContent").innerHTML = renderDetail(agent, report);
-      bindDetailEvents(agent, report);
-    } catch (e) {
-      $("#modalContent").innerHTML = `<p class="error">加载失败：${escapeHTML(e.message)}</p>`;
+  // v2.4.26+: 展开时调用这个，返回详情 HTML（不含 head，已在 card 头部显示）
+  // report 可能为 null（拉数据失败），这时显示 error
+  function renderDetailBody(a, report) {
+    if (!report) {
+      return `<div class="error-banner">⚠️ 拉数据失败，可能机器不在线或 token 不对</div>`;
     }
-  }
-
-  function closeDetail() {
-    $("#detailModal").hidden = true;
-    document.body.style.overflow = "";
-    state.selectedId = null;
-    state.selectedEmail = null;
-  }
-
-  function renderDetail(a, report) {
     const hw = report.hardware || {};
     const cpu = hw.cpu || {};
     const mem = hw.memory || {};
@@ -315,7 +382,7 @@
                 </tr>`).join("")}
             </tbody>
           </table>
-          <div id="chartHost"></div>
+          <div class="chart-host" data-id="${escapeHTML(a.id)}"></div>
         </div>`;
     } else if (xui._error) {
       xuiHTML = `
@@ -326,11 +393,6 @@
     }
 
     return `
-      <div class="detail-head">
-        <h2>${escapeHTML(a.name)} <span class="status-dot status-${a.online ? "online" : (a.last_received_ms > 0 ? "stale" : "offline")}"></span></h2>
-        <div class="sub">id = ${escapeHTML(a.id.slice(0, 8))}… · ${a.source} · 数据于 ${report.timestamp ? fmtTime(report.timestamp * 1000) : "—"}</div>
-      </div>
-
       <div class="detail-section">
         <div class="section-title">资源占用</div>
         ${barRow("CPU", cpu.percent, cpu.model ? cpu.model : null)}
@@ -352,24 +414,26 @@
     `;
   }
 
-  function bindDetailEvents(agent, report) {
-    // 关闭按钮
-    const closeBtn = $("#modalClose");
-    if (closeBtn) closeBtn.onclick = closeDetail;
-
-    // 3xui 客户端行点击 → 加载 72h 折线图
-    $$("#modalContent .client-row").forEach((row) => {
-      row.addEventListener("click", () => {
+  // v2.4.26+: 展开时绑定 3xui 客户端行的图表加载
+  function bindExpandedCardEvents(id) {
+    const card = document.querySelector(`.machine-card.expanded[data-id="${CSS.escape(id)}"]`);
+    if (!card) return;
+    card.querySelectorAll(".client-row").forEach((row) => {
+      row.addEventListener("click", (e) => {
+        e.stopPropagation();  // 不让触发 card 的收起
         const email = row.dataset.email;
-        const id = row.dataset.id;
-        openChart(id, email);
+        const cardId = row.dataset.id;
+        openChart(cardId, email);
       });
     });
   }
 
   async function openChart(id, email) {
     state.selectedEmail = email;
-    const host = $("#chartHost");
+    // 找当前展开 card 里的 chart-host
+    const card = document.querySelector(`.machine-card.expanded[data-id="${CSS.escape(id)}"]`);
+    if (!card) return;
+    const host = card.querySelector(".chart-host");
     if (!host) return;
     host.innerHTML = `<div class="chart-wrap"><div class="chart-title"><span>${escapeHTML(email)} · 加载中…</span></div></div>`;
     try {
@@ -497,13 +561,10 @@
       // 更新页面
       renderOverview();
       renderMachines();
-      // 详情打开中就保持原样，不强制重渲染（避免用户选中的 chart 被打断）
-      if (state.selectedId) {
-        const sel = state.agents.find((a) => a.id === state.selectedId);
-        if (sel) {
-          const rpt = state.reports.get(state.selectedId);
-          if (rpt) $("#modalContent").innerHTML = renderDetail(sel, rpt), bindDetailEvents(sel, rpt);
-        }
+      // v2.4.26+: 展开中的 card 重新绑定 client-row 事件
+      // （renderMachines 整个重渲染了，事件会丢，但 chart-host 里的内容用户已经看过就不重画了）
+      if (state.expandedId) {
+        bindExpandedCardEvents(state.expandedId);
       }
 
       state.lastRefreshMs = Date.now();
@@ -528,12 +589,12 @@
   function start() {
     // 事件绑定
     $("#refreshBtn").addEventListener("click", refresh);
-    $("#modalClose").addEventListener("click", closeDetail);
-    $("#detailModal").addEventListener("click", (e) => {
-      if (e.target === $("#detailModal")) closeDetail();
-    });
+    // v2.4.26+: ESC 键收起展开的 card（取代了原来的 modal close）
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && !$("#detailModal").hidden) closeDetail();
+      if (e.key === "Escape" && state.expandedId) {
+        state.expandedId = null;
+        renderMachines();
+      }
     });
 
     // 首次加载
