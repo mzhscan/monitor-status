@@ -134,19 +134,21 @@ type Server struct {
 	startTimeMs int64
 
 	// v2.4.26+: 公网 agent 的代理配置（不在 whitelist 里，因为它们不 push）
-	proxyEPs    map[string]*ProxyEndpoint // token -> endpoint
-	proxyCache  map[string]*proxyCache    // token -> cached data
+	proxyEPs     map[string]*ProxyEndpoint // token -> endpoint
+	proxyCache   map[string]*proxyCache    // token -> cached data
 	proxyCacheMu sync.RWMutex
+	insecureProxy bool // 代理拉公网 agent 时是否跳过 TLS 校验（默认 true，自签 cert 场景）
 }
 
-func newServer(whitelist map[string]bool, proxyEPs map[string]*ProxyEndpoint) *Server {
+func newServer(whitelist map[string]bool, proxyEPs map[string]*ProxyEndpoint, insecureProxy bool) *Server {
 	return &Server{
-		slots:       make(map[string]*Slot),
-		whitelist:   whitelist,
-		proxyEPs:    proxyEPs,
-		proxyCache:  make(map[string]*proxyCache),
-		maxStaleMs:  2 * 60 * 1000, // 2 分钟
-		startTimeMs: time.Now().UnixMilli(),
+		slots:         make(map[string]*Slot),
+		whitelist:     whitelist,
+		proxyEPs:      proxyEPs,
+		proxyCache:    make(map[string]*proxyCache),
+		maxStaleMs:    2 * 60 * 1000, // 2 分钟
+		startTimeMs:   time.Now().UnixMilli(),
+		insecureProxy: insecureProxy,
 	}
 }
 
@@ -363,6 +365,9 @@ func (s *Server) handleWebAgents(w http.ResponseWriter, r *http.Request) {
 }
 
 // fetchProxy: 公网 agent 的拉取 + 5s 缓存
+//   s.insecureProxy 默认 true：公网 agent 全是自签 cert，认证靠 X-Agent-Token
+//   安全性 = token 本身（32 字符随机），cert 只用来防 passive 监听
+//   改成 false = 严格校验 cert，需要把每台 agent 的自签 CA 加到系统 trust store
 func (s *Server) fetchProxy(token string) ([]byte, int64, error) {
 	s.proxyCacheMu.RLock()
 	ep, ok := s.proxyEPs[token]
@@ -386,6 +391,11 @@ func (s *Server) fetchProxy(token string) ([]byte, int64, error) {
 	req.Header.Set("X-Agent-Token", ep.Token)
 	req.Header.Set("User-Agent", "monitor-status-relay/1.0")
 	client := &http.Client{Timeout: 10 * time.Second}
+	if s.insecureProxy {
+		client.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("拉公网 agent 失败: %w", err)
@@ -633,15 +643,16 @@ func generateSelfSignedCert(certPath, keyPath, ipsArg, hostsArg string) error {
 
 func main() {
 	var (
-		tokensArg   = flag.String("tokens", os.Getenv("RELAY_TOKENS"), "token 白名单，逗号分隔（也可走 RELAY_TOKENS env）")
-		proxyEPsArg = flag.String("proxy-endpoints", os.Getenv("RELAY_AGENT_ENDPOINTS"), "公网 agent 代理列表，逗号分隔 name:url:token（也可走 RELAY_AGENT_ENDPOINTS env）")
-		port        = flag.String("port", "", "监听端口（覆盖 env）")
-		bind        = flag.String("bind", "", "绑定地址（覆盖 env）")
-		certFile    = flag.String("cert", "", "TLS cert 路径（覆盖 env）")
-		keyFile     = flag.String("key", "", "TLS key 路径（覆盖 env）")
-		dataDir     = flag.String("data-dir", "", "数据/证书目录（覆盖 env）")
-		ipsArg      = flag.String("ips", "", "SAN IP，逗号分隔（覆盖 env）")
-		hostsArg    = flag.String("hosts", "", "SAN 域名，逗号分隔（覆盖 env）")
+		tokensArg       = flag.String("tokens", os.Getenv("RELAY_TOKENS"), "token 白名单，逗号分隔（也可走 RELAY_TOKENS env）")
+		proxyEPsArg     = flag.String("proxy-endpoints", os.Getenv("RELAY_AGENT_ENDPOINTS"), "公网 agent 代理列表，逗号分隔 name:url:token（也可走 RELAY_AGENT_ENDPOINTS env）")
+		insecureProxyFl = flag.String("insecure-proxy", getenv("RELAY_INSECURE_PROXY", "true"), "代理拉公网 agent 时是否跳过 TLS 校验（默认 true，自签 cert 场景）")
+		port            = flag.String("port", "", "监听端口（覆盖 env）")
+		bind            = flag.String("bind", "", "绑定地址（覆盖 env）")
+		certFile        = flag.String("cert", "", "TLS cert 路径（覆盖 env）")
+		keyFile         = flag.String("key", "", "TLS key 路径（覆盖 env）")
+		dataDir         = flag.String("data-dir", "", "数据/证书目录（覆盖 env）")
+		ipsArg          = flag.String("ips", "", "SAN IP，逗号分隔（覆盖 env）")
+		hostsArg        = flag.String("hosts", "", "SAN 域名，逗号分隔（覆盖 env）")
 	)
 	flag.Parse()
 
@@ -743,7 +754,18 @@ func main() {
 	// token 安全的常量时间比较防御（虽然这里只用来查 map 但写得更稳）
 	_ = subtle.ConstantTimeCompare
 
-	srv := newServer(whitelist, proxyEPs)
+	// v2.4.26+: 代理拉公网 agent 时是否跳过 TLS 校验
+	// 公网 agent 默认是自签 cert，认证靠 X-Agent-Token（32 字符随机）
+	// 安全 = token 本身，cert 只防 passive 监听。默认 skip 校验让自签 cert 能用
+	// 想要严格校验：传 --insecure-proxy=false，然后把 agent 的自签 CA 加到系统 trust store
+	insecureBool := *insecureProxyFl != "false" && *insecureProxyFl != "0" && *insecureProxyFl != "no"
+	if !insecureBool {
+		log.Printf("🔒 代理拉公网 agent 时严格校验 TLS（需要把 agent 的自签 CA 加到系统 trust store）")
+	} else {
+		log.Printf("⚠️  代理拉公网 agent 时跳过 TLS 校验（自签 cert 场景，默认）")
+	}
+
+	srv := newServer(whitelist, proxyEPs, insecureBool)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ingest", srv.handleIngest)
