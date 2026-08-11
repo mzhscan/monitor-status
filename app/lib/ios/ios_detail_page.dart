@@ -11,7 +11,7 @@
 // 视觉保持 iOS 27 Liquid Glass。
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show Colors, LinearProgressIndicator;
+import 'package:flutter/material.dart' show LinearProgressIndicator;
 import '../models.dart';
 import '../store.dart';
 import '../widgets.dart' show formatBytes;
@@ -61,9 +61,12 @@ class _IOSDetailPageState extends State<IOSDetailPage> {
     final status = computeStatus(lastSuccessMs);
 
     return CupertinoPageScaffold(
-      backgroundColor: Colors.transparent,
+      // 修：背景改白色（之前 Colors.transparent 让水平滑入 0.4s 期间透出总览页内容，
+      // 看起来'内容重叠'）。iOS 27 标准的 modal push 转场本身就有动画，
+      // 但 page 本身必须 opaque（modal 是覆盖语义，不是叠加）
+      backgroundColor: const Color(0xFFFFFFFF),
       navigationBar: CupertinoNavigationBar(
-        backgroundColor: IOSTheme.glassDark,
+        backgroundColor: IOSTheme.glassDark,  // nav bar 保留 80% 白，保留 Liquid Glass 感
         border: null,
         middle: Text(widget.server.name),
         // 修：右上角只保留编辑按钮

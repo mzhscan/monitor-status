@@ -9,7 +9,7 @@
 // 视觉保持 iOS 27 Liquid Glass（GlassContainer + BackdropFilter）。
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show Colors, SelectableText;
+import 'package:flutter/material.dart' show SelectableText;
 import '../models.dart';
 import '../store.dart';
 import 'ios_helpers.dart';
@@ -32,9 +32,10 @@ class IOSErrorDetailsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
-      backgroundColor: Colors.transparent,
+      // 修：背景改白，避免水平滑入 0.4s 期间透出总览页内容
+      backgroundColor: const Color(0xFFFFFFFF),
       navigationBar: CupertinoNavigationBar(
-        backgroundColor: IOSTheme.glassDark,
+        backgroundColor: IOSTheme.glassDark,  // nav bar 保留 80% 白，Liquid Glass 感
         border: null,
         middle: const Text('错误详情'),
         trailing: CupertinoButton(
