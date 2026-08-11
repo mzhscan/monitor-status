@@ -110,7 +110,7 @@ class _IOSAppState extends State<IOSApp> {
       IOSTabBarItem(
         icon: CupertinoIcons.square_grid_2x2,
         activeIcon: CupertinoIcons.square_grid_2x2_fill,
-        label: '机器',
+        label: '服务器',
       ),
       IOSTabBarItem(
         icon: CupertinoIcons.gear,
