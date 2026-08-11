@@ -155,8 +155,8 @@ class _IOSMachinesPageState extends State<IOSMachinesPage> {
         ),
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(
-            IOSTheme.paddingL, 0,  // 修：顶部 padding=0 让第一张卡紧贴 nav bar 下沿，
-            // 跟卡片之间 12pt 接近一致（nav bar 文字"总览"下沿到 nav bar 底部 ~13pt）
+            IOSTheme.paddingL, 12,  // 修：顶部 padding=12pt 跟卡片之间 12pt 一致
+            // （nav bar 白色区域底部到第一张卡 = 12pt）
             IOSTheme.paddingL, 140,  // 留出浮动 tab bar 空间
           ),
           sliver: SliverList(
