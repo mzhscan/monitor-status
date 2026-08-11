@@ -24,16 +24,15 @@ class IOSApp extends StatefulWidget {
 }
 
 class _IOSAppState extends State<IOSApp> {
+  // 修：添加 tab 跟机器/设置一样是 tab 切换，不再是 action button / push modal。
+  // _currentIndex 0=机器 / 1=设置 / 2=添加 —— IndexedStack 瞬间切换，0 动画。
   int _currentIndex = 0;
-  // 修 Bug A：添加 tab 独立成"action button"模式 —— _isAddOpen 控制 tab 2 高亮，
-  // 不污染 _currentIndex（永远 0/1）。这样：
-  // 1. 切到 _currentIndex=0 不会再被"上一次点过添加"卡住
-  // 2. add page 0.4s 滑入期间不会显示 SizedBox.shrink() 空白
-  // 3. add page 开着时切到机器/设置 → 一次性 pop + 切 tab，没 race condition
-  bool _isAddOpen = false;
+  // 修：编辑模式——长按 → 菜单 → 编辑，会切到 IndexedStack[2] + 设 initial
+  MonitorServer? _editingServer;
   bool _firstLaunchChecked = false;
 
-  // 每个 tab 的 Navigator state key（添加 tab 不需要，但 machines / settings 需要）
+  // 每个 tab 的 Navigator state key（添加 tab 走 IndexedStack 不需要 navigator，
+  // 但 machines / settings 需要）
   // 修 Bug 1：之前只有 _machinesNavigatorKey，导致设置 tab 时点不动添加
   // —— push 走错 navigator 了
   final _machinesNavigatorKey = GlobalKey<NavigatorState>();
@@ -64,20 +63,16 @@ class _IOSAppState extends State<IOSApp> {
     if (!shown && mounted && store.orderedServers.isEmpty) {
       await prefs.setBool('first_launch_shown', true);
       if (!mounted) return;
-      // 等下一帧 push（确保 navigator 已就绪）
+      // 修：现在添加 tab 走 IndexedStack[2]，直接 setState 切过去
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _activeNavigator()?.pushNamed('/add').then((_) {
-          if (!mounted) return;
-          setState(() => _isAddOpen = false);
-        });
-        setState(() => _isAddOpen = true);
+        setState(() => _currentIndex = 2);
       });
     }
   }
 
   // 修 Bug 1：返回当前 tab 的 Navigator
-  // （添加 tab 走的是当前 tab 的 navigator，保持 modal 在当前 tab 内）
+  // （添加 tab 走 IndexedStack 不需要 navigator）
   NavigatorState? _activeNavigator() {
     switch (_currentIndex) {
       case 0:
@@ -89,28 +84,18 @@ class _IOSAppState extends State<IOSApp> {
     }
   }
 
-  // 共享的路由表（详情页/添加页/错误页）
+  // 共享的路由表（详情页/错误页）—— 修：add page 不再走 push 路由，
+  // 走 IndexedStack[2] 直接显示（跟机器/设置 tab 一样瞬间切换）
   Route<dynamic>? _onGenerateRoute(RouteSettings settings) {
     Widget page;
-    // 修 Bug B：add page 用 fullscreenDialog 模式（iOS 27 标准添加行为）
-    // —— 从下滑入 + 背景 dim + 顶部圆角，0.4s 转场不再跟底 tab 内容"重叠"。
-    // 默认 CupertinoPageRoute 是水平滑入（modal sheet 风格），半透明期间看到底 tab。
-    final isFullscreenDialog = settings.name == '/add';
     if (settings.name == '/detail') {
       page = IOSDetailPage(store: widget.store, server: settings.arguments as MonitorServer);
-    } else if (settings.name == '/add') {
-      final initial = settings.arguments as MonitorServer?;
-      page = IOSAddServerPage(store: widget.store, initial: initial);
     } else if (settings.name == '/error-details') {
       page = IOSErrorDetailsPage(store: widget.store);
     } else {
       return null;
     }
-    return CupertinoPageRoute(
-      fullscreenDialog: isFullscreenDialog,
-      builder: (_) => page,
-      settings: settings,
-    );
+    return CupertinoPageRoute(builder: (_) => page, settings: settings);
   }
 
   @override
@@ -148,7 +133,16 @@ class _IOSAppState extends State<IOSApp> {
                 CupertinoTabView(
                   navigatorKey: _machinesNavigatorKey,
                   onGenerateRoute: _onGenerateRoute,
-                  builder: (ctx) => IOSMachinesPage(store: widget.store),
+                  builder: (ctx) => IOSMachinesPage(
+                    store: widget.store,
+                    onEditServer: (s) {
+                      // 修：编辑走 IndexedStack[2]（跟点添加 tab 一样瞬间切换）
+                      setState(() {
+                        _editingServer = s;
+                        _currentIndex = 2;
+                      });
+                    },
+                  ),
                 ),
                 // 1: 设置 tab
                 CupertinoTabView(
@@ -156,43 +150,50 @@ class _IOSAppState extends State<IOSApp> {
                   onGenerateRoute: _onGenerateRoute,
                   builder: (ctx) => IOSSettingsPage(store: widget.store),
                 ),
-                // 2: "添加" tab —— 占位：打开时直接 push add page
-                // （实际 push 在 onTap 处理）
-                const SizedBox.shrink(),
+                // 2: 添加 tab —— 直接放 IOSAddServerPage，跟机器/设置一样瞬间切换
+                // （之前 push modal 会有"从下往上"动画，跟其他 tab 体验不一致）
+                IOSAddServerPage(
+                  // key 用 _editingServer.id 区分，避免编辑 A → 编辑 B 时状态错乱
+                  key: ValueKey(_editingServer?.id ?? '__new__'),
+                  store: widget.store,
+                  initial: _editingServer,
+                  onClose: () {
+                    setState(() {
+                      _currentIndex = 0;
+                      _editingServer = null;
+                    });
+                  },
+                ),
               ],
             ),
           ),
         ),
         // iOS 27 风格浮动小岛 tab bar
         IOSTabBar(
-          // 修 Bug A：add page 开着时 tab 2 高亮（不依赖 _currentIndex）
-          currentIndex: _isAddOpen ? 2 : _currentIndex,
+          currentIndex: _currentIndex,
           onTap: (i) {
-            if (i == 2) {
-              // 最右边"添加"tab：push add page（独立 action，不切 _currentIndex）
-              // 修 Bug A：用 .then 处理 pop 回调，避免 await 阻塞 onTap
-              setState(() => _isAddOpen = true);
-              _activeNavigator()?.pushNamed('/add').then((_) {
-                if (!mounted) return;
-                setState(() => _isAddOpen = false);
-              });
-              return;
-            }
-            if (_isAddOpen) {
-              // add page 开着时切到机器/设置：一次性 pop + 切 tab，没 race
-              setState(() {
-                _isAddOpen = false;
-                _currentIndex = i;
-              });
-              _activeNavigator()?.popUntil((r) => r.isFirst);
-              return;
-            }
             if (i == _currentIndex) {
               // 点当前 tab → 弹回根（iOS 标准行为）
-              _activeNavigator()?.popUntil((r) => r.isFirst);
-            } else {
-              setState(() => _currentIndex = i);
+              // 修：在添加 tab 上点自己：清空 _editingServer + 切回机器
+              if (i == 2) {
+                setState(() {
+                  _editingServer = null;
+                  _currentIndex = 0;
+                });
+              } else {
+                _activeNavigator()?.popUntil((r) => r.isFirst);
+              }
+              return;
             }
+            if (i == 2) {
+              // 切到添加 tab：清空 _editingServer（保证是"新建"模式）
+              setState(() {
+                _editingServer = null;
+                _currentIndex = 2;
+              });
+              return;
+            }
+            setState(() => _currentIndex = i);
           },
           items: items,
         ),

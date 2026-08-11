@@ -20,7 +20,9 @@ import 'ios_glass.dart';
 
 class IOSMachinesPage extends StatefulWidget {
   final MonitorStore store;
-  const IOSMachinesPage({super.key, required this.store});
+  // 通知父进入编辑模式（切到 IndexedStack[2] + 设置 _editingServer）
+  final ValueChanged<MonitorServer>? onEditServer;
+  const IOSMachinesPage({super.key, required this.store, this.onEditServer});
 
   @override
   State<IOSMachinesPage> createState() => _IOSMachinesPageState();
@@ -496,7 +498,13 @@ class _IOSMachinesPageState extends State<IOSMachinesPage> {
     } else if (action == 'view') {
       Navigator.of(context).pushNamed('/detail', arguments: s);
     } else if (action == 'edit') {
-      await Navigator.of(context).pushNamed('/add', arguments: s);
+      // 修：编辑走 IndexedStack[2]（跟点添加 tab 一样，瞬间切换）
+      if (widget.onEditServer != null) {
+        widget.onEditServer!(s);
+      } else {
+        // 兜底：没 callback 时走 push modal
+        await Navigator.of(context).pushNamed('/add', arguments: s);
+      }
     } else if (action == 'delete') {
       final ok = await showCupertinoDialog<bool>(
         context: context,

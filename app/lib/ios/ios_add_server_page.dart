@@ -37,7 +37,11 @@ Future<void> _debugLog(String msg) async {
 class IOSAddServerPage extends StatefulWidget {
   final MonitorStore store;
   final MonitorServer? initial;  // 非空 = 编辑模式
-  const IOSAddServerPage({super.key, required this.store, this.initial});
+  // 关闭回调：保存/取消时触发，父（IOSApp）用来切回 _currentIndex=0/1
+  // —— 修添加 tab 切换动画问题：现在 add page 走 IndexedStack[2] 不再 push，
+  // 用 callback 通知父切 tab，不要用 Navigator.pop
+  final VoidCallback? onClose;
+  const IOSAddServerPage({super.key, required this.store, this.initial, this.onClose});
 
   @override
   State<IOSAddServerPage> createState() => _IOSAddServerPageState();
@@ -284,10 +288,10 @@ class _IOSAddServerPageState extends State<IOSAddServerPage> {
           url: url,
           token: token,
         );
-        if (mounted) Navigator.of(context).pop();
+        if (mounted) widget.onClose?.call();
       } else {
         await widget.store.addAgentServer(name: name, url: url, token: token);
-        if (mounted) Navigator.of(context).pop();
+        if (mounted) widget.onClose?.call();
       }
     } catch (e) {
       if (mounted) {
@@ -302,18 +306,16 @@ class _IOSAddServerPageState extends State<IOSAddServerPage> {
   @override
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
-      // 修 Bug B：fullscreenDialog 模式下用白底（不能透到下面的 tab），
-      // 之前 Colors.transparent 是 iOS 27 Liquid Glass 风格用的，但
-      // fullscreenDialog 是从下滑入的 modal page sheet，背景 dim 但 page 本体
-      // 必须 opaque，不然 page sheet 内的内容能透出
+      // 修添加 tab 切换动画：现在 add page 走 IndexedStack[2]（不是 push modal），
+      // 跟机器/设置 tab 一样瞬间切换，不再 fullscreenDialog 从下滑入
       backgroundColor: const Color(0xFFFFFFFF),
       navigationBar: CupertinoNavigationBar(
         backgroundColor: IOSTheme.glassDark,
         border: null,
-        // fullscreenDialog 模式：iOS 标准是 leading 显示"取消"
+        // 取消：通知父切回原 tab（不是 Navigator.pop，因为 add page 走 IndexedStack）
         leading: CupertinoButton(
           padding: EdgeInsets.zero,
-          onPressed: _busy ? null : () => Navigator.of(context).pop(),
+          onPressed: _busy ? null : () => widget.onClose?.call(),
           child: const Text('取消', style: TextStyle(color: IOSTheme.primary)),
         ),
         middle: Text(_isEdit ? '编辑服务器' : '添加服务器'),
