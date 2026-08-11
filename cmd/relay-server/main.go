@@ -53,9 +53,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -649,6 +651,60 @@ func generateSelfSignedCert(certPath, keyPath, ipsArg, hostsArg string) error {
 	return pem.Encode(keyOut, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes})
 }
 
+// ===== v2.4.26+: TLS cert 热加载 =====
+//
+// 问题：acme.sh 续签证书后，新证书写到磁盘，Go 的 http.Server
+// 默认不会重新读 → 浏览器还在用 90 天前的 cert。
+//
+// 解决：用 tls.Config.GetCertificate 回调，每个 TLS 握手都从磁盘
+// 读 cert（带 60s 缓存）。SIGHUP 信号可以立刻清缓存，不用等 60s。
+//
+// acme.sh --reloadcmd 推荐: `kill -HUP $(pidof relay-server)`
+// 不用 systemctl restart，连接不会断。
+type certReloader struct {
+	mu       sync.Mutex
+	certFile string
+	keyFile  string
+	cert     *tls.Certificate
+	loadedAt time.Time
+}
+
+// getCertificate 是 tls.Config.GetCertificate 的实现。
+// 每个 TLS 握手都会被调一次，所以加了 60s 缓存避免频繁读盘。
+func (c *certReloader) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// 60s 缓存：acme.sh 默认 60 天前续签，60s 延迟完全够
+	if c.cert != nil && time.Since(c.loadedAt) < 60*time.Second {
+		return c.cert, nil
+	}
+
+	cert, err := tls.LoadX509KeyPair(c.certFile, c.keyFile)
+	if err != nil {
+		return nil, fmt.Errorf("读 cert 失败 (%s / %s): %w", c.certFile, c.keyFile, err)
+	}
+	c.cert = &cert
+	c.loadedAt = time.Now()
+	log.Printf("🔒 cert 重新加载: %s (NotBefore=%s)", c.certFile, cert.Certificate[0])
+	// 解析证书显示 expiry
+	if len(cert.Certificate) > 0 {
+		if x509Cert, err := x509.ParseCertificate(cert.Certificate[0]); err == nil {
+			log.Printf("   到期时间: %s (剩 %s)", x509Cert.NotAfter.Format("2006-01-02 15:04:05"), time.Until(x509Cert.NotAfter).Round(time.Hour))
+		}
+	}
+	return c.cert, nil
+}
+
+// reload 立刻清缓存，下一次握手就重读 cert
+func (c *certReloader) reload() {
+	c.mu.Lock()
+	c.cert = nil
+	c.loadedAt = time.Time{}
+	c.mu.Unlock()
+	log.Printf("🔄 cert 缓存已清，下个 TLS 握手会重读")
+}
+
 // ===== main =====
 
 func main() {
@@ -790,18 +846,34 @@ func main() {
 	}
 	mux.Handle("/web/", http.StripPrefix("/web/", http.FileServer(http.FS(webSubFS))))
 
+	// v2.4.26+: TLS cert 热加载（acme.sh 续签后不用 restart）
+	certReload := &certReloader{certFile: cfg.CertFile, keyFile: cfg.KeyFile}
 	httpSrv := &http.Server{
-		Addr:      cfg.Bind + ":" + cfg.Port,
-		Handler:   mux,
-		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12},
+		Addr:    cfg.Bind + ":" + cfg.Port,
+		Handler: mux,
+		TLSConfig: &tls.Config{
+			MinVersion:     tls.VersionTLS12,
+			GetCertificate: certReload.getCertificate,
+		},
 	}
 
 	go srv.runGC()
+
+	// SIGHUP 处理器：acme.sh 续签后 `kill -HUP $(pidof relay-server)`
+	// 就立刻清 cert 缓存，不用等 60s。零停机。
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGHUP)
+		for range sigCh {
+			certReload.reload()
+		}
+	}()
 
 	log.Printf("🚀 星黎监控 relay 启动")
 	log.Printf("🌐 监听: %s:%s (TLS)", cfg.Bind, cfg.Port)
 	log.Printf("🔑 token 白名单数量: %d", len(whitelist))
 	log.Printf("📋 路由: POST /ingest (X-Relay-Token), GET /api/report (X-Agent-Token), GET /health")
+	log.Printf("🔄 cert 热加载: 启用了，每 60s 检查一次，SIGHUP 立刻清缓存")
 	log.Fatal(httpSrv.ListenAndServeTLS(cfg.CertFile, cfg.KeyFile))
 }
 
