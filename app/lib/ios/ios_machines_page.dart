@@ -97,7 +97,7 @@ class _IOSMachinesPageState extends State<IOSMachinesPage> {
                               decoration: BoxDecoration(
                                 color: IOSTheme.danger,
                                 shape: BoxShape.circle,
-                                border: Border.all(color: const Color(0xFF0A0E1A), width: 1.2),
+                                border: Border.all(color: const Color(0xFFFFFFFF), width: 1.2),
                               ),
                             ),
                           ),
@@ -511,7 +511,7 @@ class _EmptyView extends StatelessWidget {
               width: 64, height: 64,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [IOSTheme.primary, Color(0xFF7C5CFF)],
+                  colors: [IOSTheme.primary, IOSTheme.primaryLight],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),

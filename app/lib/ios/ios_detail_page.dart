@@ -166,7 +166,7 @@ class _IOSDetailPageState extends State<IOSDetailPage> {
                 width: 40, height: 40,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [IOSTheme.primary, Color(0xFF7C5CFF)],
+                    colors: [IOSTheme.primary, IOSTheme.primaryLight],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -768,7 +768,7 @@ class _EditDiskSheetState extends State<_EditDiskSheet> {
             : widget.disk.device);
     return Container(
       decoration: const BoxDecoration(
-        color: Color(0xFF0A0E1A),
+        color: Color(0xFFFFFFFF),
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(context).padding.bottom + 20),
@@ -781,7 +781,7 @@ class _EditDiskSheetState extends State<_EditDiskSheet> {
               width: 36, height: 4,
               margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
-                color: const Color(0xFF3A3A3A),
+                color: const Color(0xFFE0E0E5),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),

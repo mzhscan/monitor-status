@@ -32,7 +32,7 @@ class IOSAboutSheet extends StatelessWidget {
     return Container(
       height: MediaQuery.of(context).size.height * 0.85,
       decoration: const BoxDecoration(
-        color: Color(0xFF0A0E1A),
+        color: Color(0xFFFFFFFF),
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: DraggableScrollableSheet(
@@ -50,7 +50,7 @@ class IOSAboutSheet extends StatelessWidget {
                   width: 36, height: 4,
                   margin: const EdgeInsets.only(bottom: 16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF3A3A3A),
+                    color: const Color(0xFFE0E0E5),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),

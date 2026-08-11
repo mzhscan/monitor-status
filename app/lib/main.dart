@@ -83,7 +83,7 @@ class _MonitorAppState extends State<MonitorApp> {
         debugShowCheckedModeBanner: false,
         theme: const CupertinoThemeData(
           primaryColor: ios_theme.IOSTheme.primary,
-          brightness: Brightness.dark,
+          brightness: Brightness.light,  // v2.4.26+: 改成 light（粉色+白主题需要 dark text on light bg）
         ),
         home: IOSApp(store: _store),
       );

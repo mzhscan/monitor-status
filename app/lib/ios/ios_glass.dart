@@ -1,7 +1,8 @@
-// iOS 27 液态玻璃 widgets
+// iOS 27 液态玻璃 widgets —— 浅色（白+粉）主题
 //
 // 关键：BackdropFilter + ImageFilter.blur 做出毛玻璃
-// 容器用半透明白/黑 + 圆角 + 细边
+// 容器用半透明白 + 圆角 + 浅粉边
+// 背景：白 + 浅粉渐变 + 粉/紫光斑（保留 iOS 27 视觉感）
 
 import 'dart:ui' as ui;
 import 'package:flutter/cupertino.dart';
@@ -21,6 +22,7 @@ class GlassContainer extends StatelessWidget {
   final double? width;
   final double? height;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
   const GlassContainer({
     super.key,
@@ -36,6 +38,7 @@ class GlassContainer extends StatelessWidget {
     this.width,
     this.height,
     this.onTap,
+    this.onLongPress,
   });
 
   @override
@@ -52,6 +55,20 @@ class GlassContainer extends StatelessWidget {
         color: effectiveColor,
         borderRadius: BorderRadius.circular(borderRadius),
         border: effectiveBorder,
+        boxShadow: const [
+          // 软投影（粉色光晕）
+          BoxShadow(
+            color: Color(0x1AFF6B95), // 粉色 10%
+            blurRadius: 18,
+            offset: Offset(0, 6),
+          ),
+          // 轻投影
+          BoxShadow(
+            color: Color(0x0F000000), // 黑色 6%
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(borderRadius),
@@ -65,10 +82,11 @@ class GlassContainer extends StatelessWidget {
       ),
     );
 
-    if (onTap != null) {
+    if (onTap != null || onLongPress != null) {
       body = GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
+        onLongPress: onLongPress,
         child: body,
       );
     }
@@ -112,8 +130,7 @@ class GlassPill extends StatelessWidget {
   }
 }
 
-/// iOS 27 风格背景：渐变 + 微妙粒子效果
-/// （粒子用简单的静态点，不引第三方包）
+/// iOS 27 风格背景：白 + 浅粉渐变 + 粉色光斑
 class IOSBackground extends StatelessWidget {
   final Widget child;
   const IOSBackground({super.key, required this.child});
@@ -126,12 +143,12 @@ class IOSBackground extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: IOSTheme.backgroundGradient,
-          stops: [0.0, 0.5, 1.0],
+          stops: [0.0, 0.35, 0.7, 1.0],
         ),
       ),
       child: Stack(
         children: [
-          // 几个静态模糊光斑（液态玻璃的"光"感）
+          // 几个静态模糊光斑（液态玻璃的"光"感，浅色版本）
           Positioned(
             top: -100,
             right: -50,
@@ -142,7 +159,7 @@ class IOSBackground extends StatelessWidget {
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    IOSTheme.primary.withOpacity(0.15),
+                    IOSTheme.primary.withOpacity(0.10),
                     IOSTheme.primary.withOpacity(0.0),
                   ],
                 ),
@@ -159,7 +176,24 @@ class IOSBackground extends StatelessWidget {
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    const Color(0xFF7C5CFF).withOpacity(0.12),
+                    IOSTheme.primaryLight.withOpacity(0.20),
+                    IOSTheme.primaryLight.withOpacity(0.0),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 100,
+            right: -80,
+            child: Container(
+              width: 280,
+              height: 280,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    const Color(0xFF7C5CFF).withOpacity(0.08),
                     const Color(0xFF7C5CFF).withOpacity(0.0),
                   ],
                 ),
