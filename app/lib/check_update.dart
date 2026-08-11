@@ -9,16 +9,21 @@ import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
 class CheckUpdate {
-  /// 当前版本（pubspec.yaml 里的 version 字段）
+  /// 当前版本（pubspec.yaml 里的 version 字段）。
+  /// 修：build 脚本没传 --dart-define=APP_VERSION 时，defaultValue 是单点真相。
+  /// 之前 defaultValue='2.0.0'（初始模板），check update 拿它跟 GitHub release (2.4.25) 比
+  /// 永远返回 isNewer=true（误报"有新版本 2.4.25"），但 store.appVersion 已经在 2.4.26，
+  /// 看起来是"显示 2.4.26 但提示升级到 2.4.25"。
+  /// 升级时改这里（iOS / Android 都不用传 dart-define 了，defaultValue 直接是正确值）。
   static const String currentVersion = String.fromEnvironment(
     'APP_VERSION',
-    defaultValue: '2.0.0',
+    defaultValue: '2.4.26',
   );
 
   /// 当前 build number
   static const String currentBuild = String.fromEnvironment(
     'APP_BUILD',
-    defaultValue: '20',
+    defaultValue: '26',
   );
 
   /// GitHub 仓库（owner/name）—— v2.0.0 之后写死

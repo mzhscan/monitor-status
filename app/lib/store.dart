@@ -12,6 +12,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
+import 'check_update.dart';
 import 'errors.dart';
 import 'models.dart';
 import 'trusted_certs.dart';
@@ -48,8 +49,67 @@ class MonitorStore extends ChangeNotifier {
   // and out of unencrypted backups.
   // flutter_secure_storage 11+ 默认就是 RSA OAEP + AES-GCM 强加密，
   // 不再需要显式传 encryptedSharedPreferences（10.0+ 砍了）。
+  //
+  // v2.4.26+ iOS fallback: iOS 27 beta 上 Keychain + flutter_secure_storage 11
+  // 兼容性有问题（写了读不到 / 行为不稳定），所以**也写一份到 SharedPreferences**
+  // 当 fallback。写时两个都写，读时 Keychain 优先（Android 安全）→ 失败时用
+  // SharedPreferences（iOS 兜底）。SharedPreferences 在 iOS 上 == NSUserDefaults
+  // （不加密），但 token 只是 agent API key，不是用户密码，泄露影响有限。
   static const _secureStorage = FlutterSecureStorage();
   static String _tokenKey(String id) => 'token:$id';
+  static String _tokenSpKey(String id) => 'agent_token:$id';
+
+  /// 双写 token 到 Keychain + SharedPreferences（v2.4.26+ iOS 27 兜底）。
+  /// iOS 27 beta 上 Keychain 行为不稳定，SharedPreferences 是兜底通道。
+  Future<void> _saveToken(String id, String token) async {
+    _tokens[id] = token;
+    try {
+      await _secureStorage.write(key: _tokenKey(id), value: token);
+    } catch (e) {
+      debugPrint('SecureStorage.write failed for $id: $e');
+    }
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setString(_tokenSpKey(id), token);
+    } catch (e) {
+      debugPrint('SharedPreferences.setString failed for $id: $e');
+    }
+  }
+
+  /// 读 token：先内存 → Keychain → SharedPreferences 兜底。
+  Future<String?> _loadToken(String id) async {
+    final mem = _tokens[id];
+    if (mem != null && mem.isNotEmpty) return mem;
+    try {
+      final t = await _secureStorage.read(key: _tokenKey(id));
+      if (t != null && t.isNotEmpty) {
+        _tokens[id] = t;
+        return t;
+      }
+    } catch (e) {
+      debugPrint('SecureStorage.read failed for $id: $e');
+    }
+    try {
+      final p = await SharedPreferences.getInstance();
+      final t = p.getString(_tokenSpKey(id));
+      if (t != null && t.isNotEmpty) {
+        _tokens[id] = t;
+        return t;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _deleteToken(String id) async {
+    _tokens.remove(id);
+    try {
+      await _secureStorage.delete(key: _tokenKey(id));
+    } catch (_) {}
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.remove(_tokenSpKey(id));
+    } catch (_) {}
+  }
 
   final Map<String, _PerServer> _perServer = {};
   List<MonitorServer> _servers = const [];
@@ -96,8 +156,11 @@ class MonitorStore extends ChangeNotifier {
   }
   int _trustedCertCount = 0;
 
-  /// v2.4.26+：app 版本（iOS 设置页用）
-  String get appVersion => '2.4.26';
+  /// v2.4.26+：app 版本（iOS 设置页用）。
+  /// 修：改成 CheckUpdate.currentVersion（单点真相）—— 之前这里 hardcoded '2.4.26'，
+  /// CheckUpdate.currentVersion 通过 String.fromEnvironment 拿不到 dart-define
+  /// 就 fallback '2.0.0'，导致设置页显示 2.4.26 但 check update 误判 2.4.25 > 2.0.0
+  String get appVersion => CheckUpdate.currentVersion;
 
   /// Aggregate per-server status for the overview page.
   Map<String, AgentData> get data {
@@ -307,10 +370,10 @@ class MonitorStore extends ChangeNotifier {
     // them to secure storage, then strip them from the JSON. Idempotent.
     final legacy = await _extractLegacyTokens();
     for (final s in saved) {
-      String? tok = await _secureStorage.read(key: _tokenKey(s.id));
+      String? tok = await _loadToken(s.id);
       if ((tok == null || tok.isEmpty) && legacy.containsKey(s.id)) {
         tok = legacy[s.id];
-        await _secureStorage.write(key: _tokenKey(s.id), value: tok);
+        await _saveToken(s.id, tok!);
       }
       _tokens[s.id] = tok ?? '';
       final p = _PerServer(
@@ -319,7 +382,7 @@ class MonitorStore extends ChangeNotifier {
                 s.agentUrl != null &&
                 tok != null &&
                 tok.isNotEmpty)
-            ? AgentClient(url: s.agentUrl!, token: tok)
+            ? AgentClient(url: s.effectiveEndpoint(), token: tok)
             : null,
       );
       _perServer[s.id] = p;
@@ -351,10 +414,14 @@ class MonitorStore extends ChangeNotifier {
   }
 
   /// Add a new agent-mode server. Persists and starts polling immediately.
+  ///
+  /// v2.4.26+：支持 relay 模式 — 传 [relayUrl] 时所有数据通过 relay 拉取
+  /// （[url] 还是必填，给 host/port 显示用，实际拉数据用 [relayUrl]+token）。
   Future<MonitorServer> addAgentServer({
     required String name,
     required String url,
     required String token,
+    String? relayUrl,
   }) async {
     final uri = Uri.parse(url);
     final maxOrder = _servers.fold<int>(0, (m, s) => s.sortOrder > m ? s.sortOrder : m);
@@ -367,13 +434,16 @@ class MonitorStore extends ChangeNotifier {
       kind: 'agent',
       https: uri.scheme == 'https',
       agentUrl: url,
+      relayUrl: relayUrl,
       sortOrder: maxOrder + 1,
     );
-    final p = _PerServer(server: s, client: AgentClient(url: url, token: token));
+    final p = _PerServer(
+      server: s,
+      client: AgentClient(url: s.effectiveEndpoint(), token: token),
+    );
     _perServer[s.id] = p;
     _servers = [..._servers, s];
-    _tokens[s.id] = token;
-    await _secureStorage.write(key: _tokenKey(s.id), value: token);
+    await _saveToken(s.id, token);
     await _saveServers(_servers);
     notifyListeners();
     // Kick off an immediate probe so the user sees the result fast.
@@ -389,6 +459,7 @@ class MonitorStore extends ChangeNotifier {
     required String name,
     required String url,
     required String token,
+    String? relayUrl,
   }) async {
     final idx = _servers.indexWhere((s) => s.id == id);
     if (idx < 0) return;
@@ -400,19 +471,19 @@ class MonitorStore extends ChangeNotifier {
       port: uri.hasPort ? uri.port : (uri.scheme == 'https' ? 443 : 80),
       https: uri.scheme == 'https',
       agentUrl: url,
+      relayUrl: relayUrl,
     );
     // Rebuild the client
     final oldP = _perServer.remove(id);
     oldP?.client?.close();
     final newP = _PerServer(
       server: updated,
-      client: AgentClient(url: url, token: token),
+      client: AgentClient(url: updated.effectiveEndpoint(), token: token),
     );
     _perServer[id] = newP;
     _servers = [..._servers]..[idx] = updated;
     if (_currentServer?.id == id) _currentServer = updated;
-    _tokens[id] = token;
-    await _secureStorage.write(key: _tokenKey(id), value: token);
+    await _saveToken(id, token);
     await _saveServers(_servers);
     notifyListeners();
     unawaited(newP.pollOnce());
@@ -439,8 +510,7 @@ class MonitorStore extends ChangeNotifier {
   Future<void> deleteServer(String id) async {
     final p = _perServer.remove(id);
     p?.client?.close();
-    _tokens.remove(id);
-    await _secureStorage.delete(key: _tokenKey(id));
+    await _deleteToken(id);
     _servers = _servers.where((s) => s.id != id).toList();
     if (_currentServer?.id == id) _currentServer = null;
     await _saveServers(_servers);
@@ -449,11 +519,21 @@ class MonitorStore extends ChangeNotifier {
 
   /// Test the connection for a would-be server. Returns a result map.
   /// Does NOT add the server; just probes.
+  ///
+  /// v2.4.26+：支持 relay 模式 — 传 [relayUrl] 时用 relay URL 测连接。
   Future<Map<String, dynamic>> testAgent({
     required String url,
     required String token,
+    String? relayUrl,
   }) async {
-    final c = AgentClient(url: url, token: token);
+    String probeUrl = url;
+    if (relayUrl != null && relayUrl.isNotEmpty) {
+      final base = relayUrl.endsWith('/')
+          ? relayUrl.substring(0, relayUrl.length - 1)
+          : relayUrl;
+      probeUrl = '$base/api/report';
+    }
+    final c = AgentClient(url: probeUrl, token: token);
     try {
       return await c.test();
     } finally {
