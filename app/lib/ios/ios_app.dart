@@ -25,6 +25,9 @@ class IOSApp extends StatefulWidget {
 
 class _IOSAppState extends State<IOSApp> {
   int _currentIndex = 0;
+  // 修 Bug A：点"添加"tab 之前所在的 tab（机器=0 / 设置=1），
+  // add page pop 时回到原 tab
+  int _previousIndex = 0;
   bool _firstLaunchChecked = false;
   bool _pendingFirstLaunchAdd = false;
 
@@ -83,6 +86,10 @@ class _IOSAppState extends State<IOSApp> {
   // 共享的路由表（详情页/添加页/错误页）
   Route<dynamic>? _onGenerateRoute(RouteSettings settings) {
     Widget page;
+    // 修 Bug B：add page 用 fullscreenDialog 模式（iOS 27 标准添加行为）
+    // —— 从下滑入 + 背景 dim + 顶部圆角，0.4s 转场不再跟底 tab 内容"重叠"。
+    // 默认 CupertinoPageRoute 是水平滑入（modal sheet 风格），半透明期间看到底 tab。
+    final isFullscreenDialog = settings.name == '/add';
     if (settings.name == '/detail') {
       page = IOSDetailPage(store: widget.store, server: settings.arguments as MonitorServer);
     } else if (settings.name == '/add') {
@@ -93,7 +100,11 @@ class _IOSAppState extends State<IOSApp> {
     } else {
       return null;
     }
-    return CupertinoPageRoute(builder: (_) => page, settings: settings);
+    return CupertinoPageRoute(
+      fullscreenDialog: isFullscreenDialog,
+      builder: (_) => page,
+      settings: settings,
+    );
   }
 
   @override
@@ -149,11 +160,17 @@ class _IOSAppState extends State<IOSApp> {
         // iOS 27 风格浮动小岛 tab bar
         IOSTabBar(
           currentIndex: _currentIndex,
-          onTap: (i) {
+          onTap: (i) async {
             if (i == 2) {
               // 最右边"添加"tab：点一下直接 push add page
               // 修 Bug 1：走当前 tab 的 Navigator（设置 tab 时也能正常 push）
-              _activeNavigator()?.pushNamed('/add');
+              // 修 Bug A：保存原 tab index，先 setState 让"添加"tab 显示选中状态，
+              // push 完（add page pop 后）回到原 tab
+              _previousIndex = _currentIndex;
+              setState(() => _currentIndex = 2);
+              await _activeNavigator()?.pushNamed('/add');
+              if (!mounted) return;
+              setState(() => _currentIndex = _previousIndex);
               return;
             }
             if (i == _currentIndex) {
