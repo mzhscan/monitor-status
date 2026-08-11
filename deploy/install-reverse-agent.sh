@@ -263,7 +263,7 @@ case "$ARCH" in
   *) echo "❌ 不支持的架构: $ARCH" >&2; exit 1 ;;
 esac
 
-mkdir -p "$BIN_DIR"
+mkdir -p "$BIN_DIR" "/var/log/server-monitor"
 
 if [[ -n "$BINARY_PATH" ]]; then
   if [[ ! -f "$BINARY_PATH" ]]; then
@@ -319,6 +319,25 @@ echo "📝 env 自检通过 (6 个变量)"
 echo "   env 内容（token 已脱敏）:"
 sed -E 's/^(RELAY_TOKEN=).*/\1***redacted***/; s/^/   /' "$ENV_FILE"
 
+# ===== v2.4.25+: 日志隔离 — service 自己的日志写到独立文件，不进 systemd journal =====
+# 用 shell 重定向 >> 而非 StandardOutput=append:，是因为后者要 systemd 252+ 才支持
+# （usvps 是 249）。所有 systemd 版本都能用 shell 重定向，兼容性最好。
+# 原理：exec 让 reverse-agent 直接接管 fd 1/2（指向日志文件），systemd 收不到任何东西。
+# 副作用：完全不影响系统 / 其他服务的日志（journald 只管它们，跟我们无关）。
+# 注：wrapper 里的 \$VAR 由 systemd 通过 EnvironmentFile 注入环境变量，sh 在 exec 前展开。
+cat > "$BIN_DIR/run-reverse-agent.sh" <<WRAP
+#!/bin/sh
+exec $BIN_DIR/reverse-agent \\
+  -relay-url "\$RELAY_URL" \\
+  -token "\$RELAY_TOKEN" \\
+  -name "\$AGENT_NAME" \\
+  -xui-db "\$XUI_DB_PATH" \\
+  -interval \$PUSH_INTERVAL \\
+  -relay-cert-fp "\$RELAY_CERT_FP" \\
+  >> /var/log/server-monitor/reverse-agent.log 2>&1
+WRAP
+chmod 755 "$BIN_DIR/run-reverse-agent.sh"
+
 # ===== systemd unit =====
 SERVICE_FILE="/etc/systemd/system/server-monitor-reverse-agent.service"
 cat > "$SERVICE_FILE" <<EOF
@@ -330,7 +349,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=$ENV_FILE
-ExecStart=$BIN_DIR/reverse-agent -relay-url "\$RELAY_URL" -token "\$RELAY_TOKEN" -name "\$AGENT_NAME" -xui-db "\$XUI_DB_PATH" -interval \$PUSH_INTERVAL -relay-cert-fp "\$RELAY_CERT_FP"
+ExecStart=$BIN_DIR/run-reverse-agent.sh
 Restart=on-failure
 RestartSec=10s
 # 5 分钟内连挂 5 次就放弃，避免坏配置（如 env 缺失、relay 不可达）导致
@@ -342,6 +361,20 @@ LimitNOFILE=65536
 [Install]
 WantedBy=multi-user.target
 EOF
+
+# logrotate 每天 rotate，保留 4 天，压缩
+# 独立于系统 /etc/logrotate.d/*，不影响其他服务
+cat > /etc/logrotate.d/server-monitor-reverse-agent <<'LOGROTATE'
+/var/log/server-monitor/reverse-agent.log {
+    daily
+    rotate 4
+    compress
+    missingok
+    notifempty
+    copytruncate
+    create 0640 root root
+}
+LOGROTATE
 
 systemctl daemon-reload
 systemctl enable server-monitor-reverse-agent.service
@@ -371,8 +404,8 @@ else
   ACTIVE_STATE=$(systemctl show -p ActiveState --value server-monitor-reverse-agent.service 2>/dev/null || echo "unknown")
   echo "❌ 启动失败：SubState=$SUB_STATE ActiveState=$ACTIVE_STATE" >&2
   echo "" >&2
-  echo "=== 最近 30 行 journal 日志 ===" >&2
-  journalctl -u server-monitor-reverse-agent -n 30 --no-pager >&2 || true
+  echo "=== 最近 30 行 reverse-agent 日志 ===" >&2
+  tail -n 30 /var/log/server-monitor/reverse-agent.log 2>/dev/null >&2 || echo "(日志文件还不存在，wrapper 还没启动过)" >&2
   echo "==============================" >&2
   echo "" >&2
   echo "💡 常见原因：" >&2
@@ -395,7 +428,7 @@ agent 名字:   $AGENT_NAME
 push 间隔:    ${PUSH_INTERVAL}s
 env 文件:     $ENV_FILE
 binary:       $BIN_DIR/reverse-agent
-日志:         journalctl -u server-monitor-reverse-agent -f
+日志:         tail -f /var/log/server-monitor/reverse-agent.log
 
 app 端配置：
   - name:  $AGENT_NAME

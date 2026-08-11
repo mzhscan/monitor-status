@@ -89,8 +89,8 @@ sudo cat /opt/server-monitor/reverse-agent.env
 # 3. 缺了就补：直接重跑 install 命令（同 URL 同 flag），它会重新写 env + 启服务
 curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-reverse-agent.sh | sudo bash
 
-# 4. 看日志
-sudo journalctl -u server-monitor-reverse-agent -n 30 --no-pager
+# 4. 看日志（v2.4.25+: 日志不在 journal，在自己的文件里）
+sudo tail -n 30 /var/log/server-monitor/reverse-agent.log
 ```
 
 #### 装好之后再加内网机器（不重装 relay）
@@ -131,6 +131,26 @@ sudo systemctl restart server-monitor-relay
 ⚠️ **每个内网机器必须用独立 token**。一个 token 被多台机器共用会出现"数据在机器间跳变"（relay 内存里同一个 token 只存一份最新数据，后 push 的覆盖前 push 的）。
 
 详细：[relay/README.md → 二.5、已装好之后再加 token](relay/README.md#二5已装好之后再加-token新增内网机器)
+
+### 日志位置（v2.4.25+）
+
+**所有 monitor 服务（agent / relay-server / reverse-agent）的日志都不进 systemd journal** —— 各写到自己的文件，每天 logrotate 保留 4 天：
+
+```bash
+# 看实时日志
+sudo tail -f /var/log/server-monitor/agent.log
+sudo tail -f /var/log/server-monitor/relay.log
+sudo tail -f /var/log/server-monitor/reverse-agent.log
+
+# 查最后一次启动时间 + 最近 30 行
+sudo tail -n 30 /var/log/server-monitor/reverse-agent.log
+```
+
+**为什么**：reverse-agent 每 5s 一次 push，进 journal 会把系统 journald 撑爆（影响 sshd / nginx / 其他服务的日志）。我们的服务自己管自己的日志，**完全不影响系统**。
+
+**logrotate 配置文件**：`/etc/logrotate.d/server-monitor-{agent,relay,reverse-agent}`（每天 rotate / 保留 4 份 / 压缩 / copytruncate）。
+
+**老版本（journald-only）的服务**还在用 journal 记日志。升级方法：直接重跑 install 命令，service 文件会被新版本覆盖，自动迁移到新日志路径。
 
 ### HTTPS 证书
 

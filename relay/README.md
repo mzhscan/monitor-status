@@ -219,7 +219,8 @@ curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/
 **装完会自动启动**。看日志：
 
 ```bash
-journalctl -u server-monitor-reverse-agent -f
+# v2.4.25+: 日志不在 journal，在自己的文件里
+tail -f /var/log/server-monitor/reverse-agent.log
 # 应该看到：
 # 🚀 星黎监控 reverse-agent [内网-nas-1] 启动
 # 📡 推送目标: https://usvps.mzhhua.cn:9200 (interval=5s)
@@ -267,7 +268,7 @@ curl -sk https://usvps.mzhhua.cn:9200/health
 curl -sk -H "X-Agent-Token: tok-nas-1" https://usvps.mzhhua.cn:9200/api/report | python3 -m json.tool | head -20
 
 # 3. reverse-agent 日志（看 push 成功）
-journalctl -u server-monitor-reverse-agent -n 20
+tail -n 20 /var/log/server-monitor/reverse-agent.log
 ```
 
 第 1 步 `active_servers` 一直是 0 → reverse-agent 没 push 成功，看第 3 步。
@@ -296,11 +297,11 @@ journalctl -u server-monitor-reverse-agent -n 20
 # 七、常见操作
 
 ```bash
-# 看 relay 日志
-journalctl -u server-monitor-relay -f
+# 看 relay 日志（v2.4.25+: 不在 journal，在自己的文件里）
+tail -f /var/log/server-monitor/relay.log
 
 # 看 reverse-agent 日志
-journalctl -u server-monitor-reverse-agent -f
+tail -f /var/log/server-monitor/reverse-agent.log
 
 # 重启
 sudo systemctl restart server-monitor-relay
@@ -370,7 +371,8 @@ env 文件不会被覆盖（脚本只覆盖 binary），重启服务即可。**�
 reverse-agent 还没 push 过，或 push 失败。先看 reverse-agent 日志：
 
 ```bash
-journalctl -u server-monitor-reverse-agent -n 50
+# v2.4.25+: 日志不在 journal
+tail -n 50 /var/log/server-monitor/reverse-agent.log
 ```
 
 如果是 `relay 不可达`：检查网络、防火墙、`--relay-url` 是不是填错了（要带 `https://` 前缀和端口）。
@@ -442,7 +444,7 @@ sudo systemctl show server-monitor-reverse-agent -p NRestarts --value
 curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-reverse-agent.sh | sudo bash
 
 # 3. 重跑完应该看到 "✅ reverse-agent 启动成功 (SubState=running)"
-#    然后 journalctl -u server-monitor-reverse-agent -f 看 push ok
+#    然后 tail -f /var/log/server-monitor/reverse-agent.log 看 push ok
 ```
 
 ---

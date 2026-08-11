@@ -245,7 +245,7 @@ if [[ $USE_TLS -eq 1 ]]; then
 fi
 
 # ===== 准备安装 =====
-mkdir -p "$BIN_DIR" "$DATA_DIR/data"
+mkdir -p "$BIN_DIR" "$DATA_DIR/data" "/var/log/server-monitor"
 
 # 杀老进程（如果 systemd unit 已存在 / 旧 binary 在跑）
 echo "🛑 停止已有 agent 进程"
@@ -287,6 +287,17 @@ else
 fi
 chmod 600 "$ENV_FILE"
 
+# ===== v2.4.25+: 日志隔离 — service 自己的日志写到独立文件，不进 systemd journal =====
+# 用 shell 重定向 >> 而非 StandardOutput=append:，是因为后者要 systemd 252+ 才支持
+# （usvps 是 249）。所有 systemd 版本都能用 shell 重定向，兼容性最好。
+# 原理：exec 让 agent 直接接管 fd 1/2（指向日志文件），systemd 收不到任何东西。
+# 副作用：完全不影响系统 / 其他服务的日志（journald 只管它们，跟我们无关）。
+cat > "$BIN_DIR/run-agent.sh" <<WRAP
+#!/bin/sh
+exec $BIN_DIR/agent >> /var/log/server-monitor/agent.log 2>&1
+WRAP
+chmod 755 "$BIN_DIR/run-agent.sh"
+
 # systemd unit
 cat > /etc/systemd/system/server-monitor-agent.service <<EOF
 [Unit]
@@ -299,7 +310,7 @@ Type=simple
 User=root
 WorkingDirectory=$DATA_DIR
 EnvironmentFile=$ENV_FILE
-ExecStart=$BIN_DIR/agent
+ExecStart=$BIN_DIR/run-agent.sh
 Restart=always
 RestartSec=3
 LimitNOFILE=65536
@@ -307,6 +318,20 @@ LimitNOFILE=65536
 [Install]
 WantedBy=multi-user.target
 EOF
+
+# logrotate 每天 rotate，保留 4 天，压缩
+# 独立于系统 /etc/logrotate.d/*，不影响其他服务
+cat > /etc/logrotate.d/server-monitor-agent <<'LOGROTATE'
+/var/log/server-monitor/agent.log {
+    daily
+    rotate 4
+    compress
+    missingok
+    notifempty
+    copytruncate
+    create 0640 root root
+}
+LOGROTATE
 
 systemctl daemon-reload
 systemctl enable server-monitor-agent
@@ -325,7 +350,7 @@ if systemctl is-active --quiet server-monitor-agent; then
   echo "   agent 名:    $NAME"
   echo "   监听端口:    $PORT ($SCHEME)"
   echo "   env 文件:    $ENV_FILE"
-  echo "   日志:         journalctl -u server-monitor-agent -f"
+  echo "   日志:         tail -f /var/log/server-monitor/agent.log"
   echo ""
   # ===== 探测 x-ui，给用户一个明确预期 =====
   # 同一个 binary 适配 VPS（有 3x-ui）和 NAS（无），这里探测一下告诉用户
@@ -360,6 +385,6 @@ if systemctl is-active --quiet server-monitor-agent; then
     echo "    管理员核对 SHA-256 指纹后再信任）"
   fi
 else
-  echo "❌ 启动失败，查看日志： journalctl -u server-monitor-agent -n 30"
+  echo "❌ 启动失败，查看日志： tail -n 30 /var/log/server-monitor/agent.log"
   exit 1
 fi
