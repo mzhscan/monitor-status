@@ -439,72 +439,9 @@ class _IOSDetailPageState extends State<IOSDetailPage> {
   }
 
   Widget _xuiSection(XuiInfo xui) {
-    final clients = xui.clients;
-    final totalUp = clients.fold<int>(0, (s, c) => s + c.upBytes);
-    final totalDn = clients.fold<int>(0, (s, c) => s + c.downBytes);
-    final inbound = xui.inboundTotal;
-
-    return GlassContainer(
-      padding: const EdgeInsets.all(IOSTheme.paddingL),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('3xui', style: TextStyle(color: IOSTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 0.5)),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(child: _miniKV('在线', '${xui.onlineCount}')),
-              Expanded(child: _miniKV('总客户端', '${xui.totalClients}')),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(child: _miniKV('总上行', formatBytes(totalUp))),
-              Expanded(child: _miniKV('总下行', formatBytes(totalDn))),
-            ],
-          ),
-          if (inbound != null) ...[
-            const SizedBox(height: 14),
-            Container(height: 1, color: IOSTheme.glassBorder),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(child: _miniKV('主机上行 (实时)', formatBytes(inbound.upBytes))),
-                Expanded(child: _miniKV('主机下行 (实时)', formatBytes(inbound.downBytes))),
-              ],
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'inbound 实时流量（per-client 数字断开时才更新，滞后 20+ 分钟）',
-              style: TextStyle(color: IOSTheme.textTertiary, fontSize: 11),
-            ),
-          ],
-          const SizedBox(height: 14),
-          const Text('客户端', style: TextStyle(color: IOSTheme.textTertiary, fontSize: 12)),
-          const SizedBox(height: 6),
-          ...clients.map((c) => Container(
-            margin: const EdgeInsets.only(bottom: 4),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: IOSTheme.glassDark,
-              borderRadius: BorderRadius.circular(IOSTheme.radiusS),
-            ),
-            child: Row(
-              children: [
-                StatusDot(color: c.online ? IOSTheme.success : IOSTheme.textTertiary, size: 6),
-                const SizedBox(width: 6),
-                Expanded(child: Text(c.email, style: const TextStyle(color: IOSTheme.textPrimary, fontSize: 13), overflow: TextOverflow.ellipsis)),
-                Text(
-                  c.enable ? (c.online ? '在线' : '启用') : '停用',
-                  style: TextStyle(color: c.online ? IOSTheme.success : IOSTheme.textTertiary, fontSize: 11),
-                ),
-              ],
-            ),
-          )),
-        ],
-      ),
-    );
+    // 跟安卓 _VpsSection 对齐：3 个彩色 metric + 实时总流量卡 + inbounds 列表
+    // + 可排序客户端表头 + 丰富客户端行 + 底部说明
+    return _XuiVpsSection(xui: xui);
   }
 
   // 把 systemd 状态翻译成中文（跟安卓 translateStatus 对齐）
@@ -842,6 +779,462 @@ class _EditDiskSheetState extends State<_EditDiskSheet> {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// 3X-UI VPS section（跟安卓 _VpsSection 对齐：3 彩色 metric + 实时总流量卡
+// + inbounds 列表 + 可排序客户端表头 + 丰富客户端行 + 底部说明）
+// ============================================================
+
+enum _XuiClientSort { total, down, up }
+
+class _XuiVpsSection extends StatefulWidget {
+  final XuiInfo xui;
+  const _XuiVpsSection({required this.xui});
+  @override
+  State<_XuiVpsSection> createState() => _XuiVpsSectionState();
+}
+
+class _XuiVpsSectionState extends State<_XuiVpsSection> {
+  _XuiClientSort _sort = _XuiClientSort.total;
+
+  static String fmtGb(double gb) {
+    if (gb >= 1024) return '${(gb / 1024).toStringAsFixed(2)} TB';
+    if (gb < 1) return '${(gb * 1024).toStringAsFixed(0)} MB';
+    return '${gb.toStringAsFixed(1)} GB';
+  }
+
+  static String _formatObservedAt(int sec) {
+    if (sec <= 0) return '—';
+    final d = DateTime.fromMillisecondsSinceEpoch(sec * 1000).toLocal();
+    return '${d.hour.toString().padLeft(2, "0")}:${d.minute.toString().padLeft(2, "0")}:${d.second.toString().padLeft(2, "0")}';
+  }
+
+  // "X秒/分/时/天 前"（跟安卓 _formatLastOnline 一样）
+  static String _formatLastOnline(int ms) {
+    if (ms <= 0) return '从未';
+    final sec = ((DateTime.now().millisecondsSinceEpoch - ms) / 1000).round();
+    if (sec < 0) return '刚刚';
+    if (sec < 60) return '${sec}秒前';
+    if (sec < 3600) return '${sec ~/ 60}分前';
+    if (sec < 86400) return '${sec ~/ 3600}时前';
+    return '${sec ~/ 86400}天前';
+  }
+
+  List<XuiClient> _sortedClients(List<XuiClient> clients) {
+    final sorted = List<XuiClient>.from(clients);
+    sorted.sort((a, b) {
+      double va, vb;
+      switch (_sort) {
+        case _XuiClientSort.down:
+          va = a.downGb;
+          vb = b.downGb;
+          break;
+        case _XuiClientSort.up:
+          va = a.upGb;
+          vb = b.upGb;
+          break;
+        case _XuiClientSort.total:
+          va = a.totalGb;
+          vb = b.totalGb;
+          break;
+      }
+      return vb.compareTo(va); // 降序
+    });
+    return sorted;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final xui = widget.xui;
+    final sorted = _sortedClients(xui.clients);
+    final inbound = xui.inboundTotal;
+
+    return GlassContainer(
+      padding: const EdgeInsets.all(IOSTheme.paddingL),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 标题
+          Row(
+            children: [
+              const Icon(CupertinoIcons.person_2_fill, size: 18, color: IOSTheme.primary),
+              const SizedBox(width: 6),
+              const Text('3X-UI 客户端',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: IOSTheme.textPrimary)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // 3 个彩色 metric tiles（在线/下行/上行）
+          Row(
+            children: [
+              Expanded(
+                child: _XuiMetric(
+                  icon: CupertinoIcons.circle_fill,
+                  label: '在线',
+                  value: '${xui.onlineCount}/${xui.totalClients}',
+                  color: IOSTheme.success,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _XuiMetric(
+                  icon: CupertinoIcons.arrow_down,
+                  label: '下行',
+                  value: fmtGb(xui.totalDownGb),
+                  color: IOSTheme.info,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _XuiMetric(
+                  icon: CupertinoIcons.arrow_up,
+                  label: '上行',
+                  value: fmtGb(xui.totalUpGb),
+                  color: IOSTheme.primary,
+                ),
+              ),
+            ],
+          ),
+          // 实时总流量卡（蓝色渐变 + xray 实时数据 + 入口数）
+          if (inbound != null) ...[
+            const SizedBox(height: 10),
+            _XuiRealTimeCard(total: inbound),
+          ],
+          const SizedBox(height: 12),
+          // Inbounds 列表
+          if (xui.inbounds.isNotEmpty) ...[
+            const Text('入站',
+                style: TextStyle(fontSize: 12, color: IOSTheme.textTertiary, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            for (final ib in xui.inbounds) _XuiInboundRow(ib: ib),
+            const SizedBox(height: 10),
+          ],
+          // 客户端列表
+          if (xui.clients.isNotEmpty) ...[
+            const Text('客户端',
+                style: TextStyle(fontSize: 12, color: IOSTheme.textTertiary, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            _XuiClientHeader(sort: _sort, onSort: (s) => setState(() => _sort = s)),
+            for (var i = 0; i < sorted.length; i++) ...[
+              if (i > 0) Container(height: 1, color: IOSTheme.glassBorder, margin: const EdgeInsets.symmetric(vertical: 2)),
+              _XuiClientRow(
+                c: sorted[i],
+                formatLastOnline: _formatLastOnline,
+              ),
+            ],
+          ],
+          // 底部说明
+          if (xui.observedAt > 0) ...[
+            const SizedBox(height: 10),
+            Text(
+              '数据采集于 ${_formatObservedAt(xui.observedAt)} · 3x-ui 客户端流量需断开时才更新（滞后 20+ 分钟）',
+              style: const TextStyle(fontSize: 10.5, color: IOSTheme.textHint, height: 1.4),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 3X-UI 彩色 metric tile（在线/下行/上行，带背景色 + icon + 数字）
+class _XuiMetric extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+  const _XuiMetric({required this.icon, required this.label, required this.value, required this.color});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.3), width: 0.5),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 14),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label, style: TextStyle(fontSize: 10.5, color: color.withOpacity(0.85))),
+                Text(value,
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 13, color: color, fontWeight: FontWeight.w700)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 实时总流量卡（蓝色渐变 + 入口数 + ↑↓）
+class _XuiRealTimeCard extends StatelessWidget {
+  final InboundTotal total;
+  const _XuiRealTimeCard({required this.total});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0x1A4F8EF7), Color(0x0D4F8EF7)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0x334F8EF7), width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(CupertinoIcons.bolt_fill, size: 14, color: IOSTheme.info),
+              const SizedBox(width: 6),
+              const Text(
+                'VPS 主机总流量',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: IOSTheme.info),
+              ),
+              const Spacer(),
+              Text(
+                '${total.inboundsCount} 个入口',
+                style: const TextStyle(fontSize: 10, color: IOSTheme.textTertiary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    const Icon(CupertinoIcons.arrow_down, size: 14, color: IOSTheme.success),
+                    const SizedBox(width: 4),
+                    Text(
+                      _XuiVpsSectionState.fmtGb(total.downGb),
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: IOSTheme.textPrimary),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Row(
+                  children: [
+                    const Icon(CupertinoIcons.arrow_up, size: 14, color: IOSTheme.primary),
+                    const SizedBox(width: 4),
+                    Text(
+                      _XuiVpsSectionState.fmtGb(total.upGb),
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: IOSTheme.textPrimary),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Inbounds 单行：dot + 名称 + ↓↑ 流量
+class _XuiInboundRow extends StatelessWidget {
+  final XuiInbound ib;
+  const _XuiInboundRow({required this.ib});
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Container(
+            width: 6, height: 6,
+            decoration: BoxDecoration(
+              color: ib.enable ? IOSTheme.success : IOSTheme.textHint,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              ib.remark.isNotEmpty ? ib.remark : ':${ib.port}',
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12.5, color: IOSTheme.textSecondary),
+            ),
+          ),
+          Text('↓${_XuiVpsSectionState.fmtGb(ib.downGb)}',
+              style: const TextStyle(fontSize: 11, color: IOSTheme.info, fontWeight: FontWeight.w600)),
+          const SizedBox(width: 8),
+          Text('↑${_XuiVpsSectionState.fmtGb(ib.upGb)}',
+              style: const TextStyle(fontSize: 11, color: IOSTheme.primary, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+}
+
+/// 客户端表头（可点击排序：总计 / 下行 / 上行 / 72h / 最近活跃）
+class _XuiClientHeader extends StatelessWidget {
+  final _XuiClientSort sort;
+  final ValueChanged<_XuiClientSort> onSort;
+  const _XuiClientHeader({required this.sort, required this.onSort});
+
+  Widget _sortable(String label, _XuiClientSort s, {double width = 48}) {
+    final active = sort == s;
+    final color = active ? IOSTheme.primary : IOSTheme.textTertiary;
+    return GestureDetector(
+      onTap: () => onSort(s),
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: width,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label,
+                style: TextStyle(
+                    fontSize: 10.5,
+                    color: color,
+                    fontWeight: active ? FontWeight.w700 : FontWeight.w600)),
+            if (active) ...[
+              const SizedBox(width: 2),
+              const Icon(CupertinoIcons.arrow_down, size: 10, color: IOSTheme.primary),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _static(String label, {double width = 56}) {
+    return SizedBox(
+      width: width,
+      child: Text(label,
+          textAlign: TextAlign.right,
+          style: const TextStyle(
+              fontSize: 10.5,
+              color: IOSTheme.textTertiary,
+              fontWeight: FontWeight.w600)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          const SizedBox(width: 14), // dot + spacer
+          const Expanded(
+            flex: 5,
+            child: Text('客户端',
+                style: TextStyle(
+                    fontSize: 10.5,
+                    color: IOSTheme.textTertiary,
+                    fontWeight: FontWeight.w600)),
+          ),
+          _sortable('总计', _XuiClientSort.total),
+          _sortable('下行', _XuiClientSort.down),
+          _sortable('上行', _XuiClientSort.up),
+          _static('72h'),
+          _static('最近活跃'),
+        ],
+      ),
+    );
+  }
+}
+
+/// 客户端单行：dot + email + 总计/下行/上行/72h/最近活跃
+class _XuiClientRow extends StatelessWidget {
+  final XuiClient c;
+  final String Function(int ms) formatLastOnline;
+  const _XuiClientRow({required this.c, required this.formatLastOnline});
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 6, height: 6,
+            decoration: BoxDecoration(
+              color: c.online
+                  ? IOSTheme.success
+                  : (c.enable ? IOSTheme.warning : IOSTheme.textHint),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 5,
+            child: Text(
+              c.email,
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11.5, color: IOSTheme.textPrimary),
+            ),
+          ),
+          SizedBox(
+            width: 48,
+            child: Text(
+              _XuiVpsSectionState.fmtGb(c.totalGb),
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontSize: 11, color: IOSTheme.textPrimary, fontWeight: FontWeight.w600),
+            ),
+          ),
+          SizedBox(
+            width: 48,
+            child: Text(
+              _XuiVpsSectionState.fmtGb(c.downGb),
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontSize: 11, color: IOSTheme.info),
+            ),
+          ),
+          SizedBox(
+            width: 48,
+            child: Text(
+              _XuiVpsSectionState.fmtGb(c.upGb),
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontSize: 11, color: IOSTheme.primary),
+            ),
+          ),
+          SizedBox(
+            width: 56,
+            child: Text(
+              c.traffic72hGb == null ? '—' : _XuiVpsSectionState.fmtGb(c.traffic72hGb!),
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 11,
+                color: c.traffic72hGb == null ? IOSTheme.textHint : IOSTheme.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 56,
+            child: Text(
+              formatLastOnline(c.lastOnline),
+              textAlign: TextAlign.right,
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10.5,
+                color: c.online ? IOSTheme.success : IOSTheme.textTertiary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
       ),
