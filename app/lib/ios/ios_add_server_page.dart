@@ -62,6 +62,17 @@ class _IOSAddServerPageState extends State<IOSAddServerPage> {
 
   bool get _isEdit => widget.initial != null;
 
+  // 修：两种用法都支持
+  //  - IndexedStack[2] 模式下父传 onClose（切回原 tab）
+  //  - push 模式下 onClose 为 null，走 Navigator.pop
+  void _close() {
+    if (widget.onClose != null) {
+      widget.onClose!();
+    } else {
+      Navigator.of(context).pop();
+    }
+  }
+
   @override
   void dispose() {
     _nameCtrl.dispose();
@@ -288,10 +299,10 @@ class _IOSAddServerPageState extends State<IOSAddServerPage> {
           url: url,
           token: token,
         );
-        if (mounted) widget.onClose?.call();
+        if (mounted) _close();
       } else {
         await widget.store.addAgentServer(name: name, url: url, token: token);
-        if (mounted) widget.onClose?.call();
+        if (mounted) _close();
       }
     } catch (e) {
       if (mounted) {
@@ -312,10 +323,11 @@ class _IOSAddServerPageState extends State<IOSAddServerPage> {
       navigationBar: CupertinoNavigationBar(
         backgroundColor: IOSTheme.glassDark,
         border: null,
-        // 取消：通知父切回原 tab（不是 Navigator.pop，因为 add page 走 IndexedStack）
+        // 取消：优先用 onClose（IndexedStack[2] 模式下通知父切回原 tab），
+        // 没 onClose 时（push modal 模式）走 Navigator.pop
         leading: CupertinoButton(
           padding: EdgeInsets.zero,
-          onPressed: _busy ? null : () => widget.onClose?.call(),
+          onPressed: _busy ? null : _close,
           child: const Text('取消', style: TextStyle(color: IOSTheme.primary)),
         ),
         middle: Text(_isEdit ? '编辑服务器' : '添加服务器'),

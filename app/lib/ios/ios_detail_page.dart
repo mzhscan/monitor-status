@@ -66,6 +66,9 @@ class _IOSDetailPageState extends State<IOSDetailPage> {
         backgroundColor: IOSTheme.glassDark,
         border: null,
         middle: Text(widget.server.name),
+        // 修：右上角只保留编辑按钮
+        //  - 刷新按钮去掉（已经有 CupertinoSliverRefreshControl 下拉刷新）
+        //  - 保留 loading 指示器（store.isLoading 时显示转圈）
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -74,11 +77,6 @@ class _IOSDetailPageState extends State<IOSDetailPage> {
                 padding: EdgeInsets.only(right: 6),
                 child: CupertinoActivityIndicator(radius: 9),
               ),
-            CupertinoButton(
-              padding: EdgeInsets.zero,
-              onPressed: _retry,
-              child: const Icon(CupertinoIcons.refresh, color: IOSTheme.primary),
-            ),
             CupertinoButton(
               padding: EdgeInsets.zero,
               onPressed: _edit,

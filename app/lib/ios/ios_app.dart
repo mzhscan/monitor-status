@@ -90,6 +90,12 @@ class _IOSAppState extends State<IOSApp> {
     Widget page;
     if (settings.name == '/detail') {
       page = IOSDetailPage(store: widget.store, server: settings.arguments as MonitorServer);
+    } else if (settings.name == '/add') {
+      // 修：detail page 点编辑会 push /add —— 水平滑入（不是 fullscreenDialog 从下滑入），
+      // 关闭时 onClose 是 null，自动走 Navigator.pop
+      // （IndexedStack[2] 模式下 IOSApp 直接放 IOSAddServerPage 不走这个路由）
+      final initial = settings.arguments as MonitorServer?;
+      page = IOSAddServerPage(store: widget.store, initial: initial);
     } else if (settings.name == '/error-details') {
       page = IOSErrorDetailsPage(store: widget.store);
     } else {

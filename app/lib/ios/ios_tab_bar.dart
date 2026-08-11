@@ -47,18 +47,19 @@ class IOSTabBar extends StatelessWidget {
           color: const Color(0xFFFFFFFF),
           borderRadius: BorderRadius.circular(30),
           border: Border.all(color: const Color(0x1A000000), width: 0.5),
+          // 修：减弱 boxShadow —— 之前黑色 10% blur 24 + 粉色 8% blur 32 都向下投影，
+          // 阴影延伸到 tab bar 下方 30+px 形成"灰色层"遮挡卡片内容。
+          // 改成：极浅向上阴影（iOS 27 浮动小岛标准，几乎不投影到下方）
           boxShadow: const [
-            // 软投影（iOS 27 浮动小岛的标准投影）
             BoxShadow(
-              color: Color(0x1A000000), // 10% 黑色
-              blurRadius: 24,
-              offset: Offset(0, 8),
+              color: Color(0x0F000000), // 6% 黑色
+              blurRadius: 16,
+              offset: Offset(0, -1),  // 向上 1px（让 tab bar 顶部有立体感）
             ),
-            // 粉色微光（跟整体主题协调）
             BoxShadow(
-              color: Color(0x14FF6B95), // 8% 粉
-              blurRadius: 32,
-              offset: Offset(0, 4),
+              color: Color(0x0AFF6B95), // 4% 粉
+              blurRadius: 12,
+              offset: Offset(0, 2),  // 向下 2px（极轻）
             ),
           ],
         ),
