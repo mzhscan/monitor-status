@@ -38,6 +38,10 @@ class IOSTheme {
   // → 0xFFFFF4F7 几乎白但保留一丝粉
   static const Color trackBackground = Color(0xFFFFF4F7);
 
+  // 卡片底部小 chip 背景（更新时间戳用，浅粉）
+  // 跟安卓 _GradientBackdrop 渐变里那个浅粉一致
+  static const Color cardChipBackground = Color(0xFFFFEEF2);
+
   // 文字（深色，跟安卓一致）
   static const Color textPrimary = Color(0xFF1A1A1A);
   static const Color textSecondary = Color(0xFF2C2C2C);

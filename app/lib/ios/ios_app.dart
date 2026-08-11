@@ -104,6 +104,12 @@ class _IOSAppState extends State<IOSApp> {
         activeIcon: CupertinoIcons.gear_solid,
         label: '设置',
       ),
+      // 最右边 tab：添加（v2.4.31+）—— 选中时直接 push 添加服务器页
+      IOSTabBarItem(
+        icon: CupertinoIcons.add,
+        activeIcon: CupertinoIcons.add_circled_solid,
+        label: '添加',
+      ),
     ];
 
     return Stack(
@@ -116,17 +122,20 @@ class _IOSAppState extends State<IOSApp> {
             child: IndexedStack(
               index: _currentIndex,
               children: [
-                // 机器 tab
+                // 0: 机器 tab
                 CupertinoTabView(
                   navigatorKey: _machinesNavigatorKey,
                   onGenerateRoute: _onGenerateRoute,
                   builder: (ctx) => IOSMachinesPage(store: widget.store),
                 ),
-                // 设置 tab
+                // 1: 设置 tab
                 CupertinoTabView(
                   onGenerateRoute: _onGenerateRoute,
                   builder: (ctx) => IOSSettingsPage(store: widget.store),
                 ),
+                // 2: "添加" tab —— 占位：打开时直接 push add page
+                // （实际 push 在 onTap 处理）
+                const SizedBox.shrink(),
               ],
             ),
           ),
@@ -135,13 +144,18 @@ class _IOSAppState extends State<IOSApp> {
         IOSTabBar(
           currentIndex: _currentIndex,
           onTap: (i) {
+            if (i == 2) {
+              // 最右边"添加"tab：点一下直接 push add page
+              // （add page 关闭时自动回到机器 tab）
+              _machinesNavigatorKey.currentState?.pushNamed('/add');
+              return;
+            }
             if (i == _currentIndex) {
               // 点当前 tab → 弹回根（iOS 标准行为）
               if (i == 0) {
                 _machinesNavigatorKey.currentState?.popUntil((r) => r.isFirst);
-              } else {
-                // settings tab 没有保存 key，简化处理
               }
+              // 设置 tab 不做特殊处理
             } else {
               setState(() => _currentIndex = i);
             }

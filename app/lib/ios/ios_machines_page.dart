@@ -10,7 +10,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show LinearProgressIndicator;
+import 'package:flutter/material.dart' show LinearProgressIndicator, Colors, RefreshIndicator;
 
 import '../models.dart';
 import '../store.dart';
@@ -61,6 +61,8 @@ class _IOSMachinesPageState extends State<IOSMachinesPage> {
         Column(
           children: [
             // 顶部导航条：紧凑（44px）替代之前的大标题（96px+）
+            // v2.4.31+：去掉了右上角的刷新和加号按钮 —— 刷新改下拉，
+            // 加号放到底部 tab bar
             CupertinoNavigationBar(
               backgroundColor: const Color(0xFFFFFFFF),
               border: null,
@@ -74,62 +76,27 @@ class _IOSMachinesPageState extends State<IOSMachinesPage> {
                   color: IOSTheme.textPrimary,
                 ),
               ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (store.isLoading)
-                    const Padding(
-                      padding: EdgeInsets.only(right: 4),
+              trailing: store.isLoading
+                  ? const Padding(
+                      padding: EdgeInsets.only(right: 8),
                       child: CupertinoActivityIndicator(radius: 9),
-                    ),
-                  // 错误指示器（store.error 存在时显示红 icon + 角标）
-                  if (store.error != null && store.error!.isNotEmpty)
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      minSize: 32,
-                      onPressed: () {
-                        Navigator.of(context).pushNamed('/error-details');
-                      },
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          const Icon(
+                    )
+                  : (store.error != null && store.error!.isNotEmpty
+                      ? CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          minSize: 32,
+                          onPressed: () {
+                            Navigator.of(context).pushNamed('/error-details');
+                          },
+                          child: const Icon(
                             CupertinoIcons.exclamationmark_circle,
                             color: IOSTheme.danger,
                             size: 20,
                           ),
-                          Positioned(
-                            top: -2,
-                            right: -3,
-                            child: Container(
-                              width: 7,
-                              height: 7,
-                              decoration: BoxDecoration(
-                                color: IOSTheme.danger,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: const Color(0xFFFFFFFF), width: 1.2),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    minSize: 32,
-                    onPressed: store.refresh,
-                    child: const Icon(CupertinoIcons.refresh, color: IOSTheme.primary, size: 20),
-                  ),
-                  CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    minSize: 32,
-                    onPressed: _openAddPage,
-                    child: const Icon(CupertinoIcons.add_circled, color: IOSTheme.primary, size: 22),
-                  ),
-                ],
-              ),
+                        )
+                      : null),
             ),
-            // 内容区
+            // 内容区：下拉刷新（v2.4.31+ 替代之前右上角刷新按钮）
             Expanded(
               child: _buildContent(hasServers, hasData, servers),
             ),
@@ -152,37 +119,57 @@ class _IOSMachinesPageState extends State<IOSMachinesPage> {
       return const Center(child: CupertinoActivityIndicator(radius: 14));
     }
     // ListView（去掉 sliver，直接用普通 ListView + ListView.builder）
-    return ListView.builder(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(
-        IOSTheme.paddingL, IOSTheme.paddingS,
-        IOSTheme.paddingL, 140,  // 留出浮动 tab bar 空间
-      ),
-      itemCount: servers.length + 1,  // +1 for "更新于" timestamp at bottom
-      itemBuilder: (ctx, i) {
-        if (i < servers.length) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: _buildCardSlot(i),
-          );
-        }
-        // 最后一个 item：底部"更新于"时间戳
-        if (store.lastSuccessAt != null) {
-          return Padding(
-            padding: const EdgeInsets.only(top: 4, bottom: 24),
-            child: Center(
-              child: Text(
-                '更新于 ${fmtTime(store.lastSuccessAt!)}',
-                style: const TextStyle(
-                  color: IOSTheme.textTertiary,
-                  fontSize: 11,
+    // v2.4.31+：加下拉刷新（替代之前右上角刷新按钮）
+    return RefreshIndicator(
+      color: IOSTheme.primary,
+      backgroundColor: Colors.white,
+      onRefresh: () async {
+        store.refresh();
+        // 等一小段时间让 spinner 显示出来再消失
+        await Future.delayed(const Duration(milliseconds: 600));
+      },
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        padding: const EdgeInsets.fromLTRB(
+          IOSTheme.paddingL, IOSTheme.paddingS,
+          IOSTheme.paddingL, 140,  // 留出浮动 tab bar 空间
+        ),
+        itemCount: servers.length + 1,  // +1 for "更新于" timestamp at bottom
+        itemBuilder: (ctx, i) {
+          if (i < servers.length) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _buildCardSlot(i),
+            );
+          }
+          // 最后一个 item：底部"更新于"时间戳（v2.4.31+：粉色 chip 样式）
+          if (store.lastSuccessAt != null) {
+            return Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 24),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: IOSTheme.cardChipBackground,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text(
+                    '更新于 ${fmtTime(store.lastSuccessAt!)}',
+                    style: const TextStyle(
+                      color: IOSTheme.primary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          );
-        }
-        return const SizedBox.shrink();
-      },
+            );
+          }
+          return const SizedBox.shrink();
+        },
+      ),
     );
   }
 
