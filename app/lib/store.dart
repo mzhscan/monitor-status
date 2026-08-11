@@ -46,9 +46,9 @@ class MonitorStore extends ChangeNotifier {
   // Bug #5: tokens now live in flutter_secure_storage (Android Keystore),
   // keyed by server id. Keeps tokens out of the plain JSON in SharedPreferences
   // and out of unencrypted backups.
-  static const _secureStorage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
+  // flutter_secure_storage 11+ 默认就是 RSA OAEP + AES-GCM 强加密，
+  // 不再需要显式传 encryptedSharedPreferences（10.0+ 砍了）。
+  static const _secureStorage = FlutterSecureStorage();
   static String _tokenKey(String id) => 'token:$id';
 
   final Map<String, _PerServer> _perServer = {};
