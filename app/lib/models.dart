@@ -498,6 +498,23 @@ class MonitorServer {
   final int createdAt;
   final int updatedAt;
   final int sortOrder;   // 用户在概览里拖拽排序的结果
+  /// v2.4.26+：relay 模式（iOS + Android）。如果设置，所有数据都通过这个
+  /// relay 拉取（不直连 agent）。用于内网机器 — 内网机器没公网 IP，但
+  /// 跑 reverse-agent 推数据给公网 relay，app 通过 relay 拉到数据。
+  /// relay 端 token 跟 reverse-agent push 用的 token 一一对应。
+  final String? relayUrl;
+
+  /// 真正用来拉数据的 URL（v2.4.26+）。如果设了 relayUrl，app 走 relay 拉；
+  /// 否则走 agentUrl。token 不变（relay 端按 token 路由到对应内网机器）。
+  String effectiveEndpoint() {
+    if (relayUrl != null && relayUrl!.isNotEmpty) {
+      final base = relayUrl!.endsWith('/')
+          ? relayUrl!.substring(0, relayUrl!.length - 1)
+          : relayUrl!;
+      return '$base/api/report';
+    }
+    return agentUrl!;
+  }
 
   const MonitorServer({
     required this.id,
@@ -510,6 +527,7 @@ class MonitorServer {
     this.savePass = false,
     this.hasPass = false,
     this.agentUrl,
+    this.relayUrl,
     this.diskAliases = const {},
     this.hiddenDisks = const {},
     this.createdAt = 0,
@@ -528,6 +546,7 @@ class MonitorServer {
         savePass: _b(j['save_pass']),
         hasPass: _b(j['has_pass']),
         agentUrl: j['agent_url'] as String?,
+        relayUrl: j['relay_url'] as String?,
         diskAliases: _strMap(j['disk_aliases']),
         hiddenDisks: _boolMap(j['hidden_disks']),
         createdAt: _i(j['created_at']),
@@ -554,6 +573,7 @@ class MonitorServer {
         'save_pass': savePass,
         'has_pass': hasPass,
         if (agentUrl != null) 'agent_url': agentUrl,
+        if (relayUrl != null) 'relay_url': relayUrl,
         'created_at': createdAt,
         'updated_at': updatedAt,
         'sort_order': sortOrder,
@@ -578,6 +598,7 @@ class MonitorServer {
     String? host,
     int? port,
     String? agentUrl,
+    String? relayUrl,
     bool? https,
     Map<String, String>? diskAliases,
     Map<String, bool>? hiddenDisks,
@@ -594,6 +615,7 @@ class MonitorServer {
         savePass: savePass,
         hasPass: hasPass,
         agentUrl: agentUrl ?? this.agentUrl,
+        relayUrl: relayUrl ?? this.relayUrl,
         diskAliases: diskAliases ?? this.diskAliases,
         hiddenDisks: hiddenDisks ?? this.hiddenDisks,
         createdAt: createdAt,
