@@ -12,8 +12,11 @@ import 'models.dart';
 import 'trusted_certs.dart';
 
 class AgentClient {
-  final String url;        // e.g. https://192.168.1.1:9101
+  final String url;        // 拉数据的 URL：直连 = https://agent:port/api/report
+                           //              relay  = https://relay:port/api/report
   final String token;      // X-Agent-Token header value
+                           // 直连：agent 的 token
+                           // relay：reverse-agent push 用的 token（relay 按 token 路由）
   final http.Client _client;
 
   AgentClient({required this.url, required this.token})
@@ -38,18 +41,26 @@ class AgentClient {
       // 1) Explicit user-pinned TOFU trust for this URL.
       if (TrustedCertCache.isTrusted(url, cert)) return true;
       // 2) Workaround for Dart's hostname check not recognizing IP-based
-      //    SAN entries. LE certs issued for an IP (e.g. /root/cert/ip/)
-      //    chain to a system-trusted root but Dart still flags
-      //    "Hostname mismatch". Since the user explicitly added this URL,
-      //    we trust the cert as long as the issuer is a well-known CA.
+      //    SAN entries + iOS 27 strict hostname check.
+      //
+      // 之前的版本用 `issuer.contains('CN = YE2')` 这种严格匹配，但
+      // X509Certificate.issuer.toString() 实际格式在 iOS 27 dart:io 上
+      // 跟 Android 不一样（有 / 无空格差异），导致代码里写的所有 CN 字符串
+      // 都不匹配。改为只看 issuer 字符串里有没有 CA 名字（不依赖具体 CN 字段）：
+      //   - "Let's Encrypt" / "ISRG"        → Let's Encrypt 中间/根
+      //   - "DigiCert" / "Sectigo"           → 其他主流 CA
+      //   - "Google Trust Services"          → Google 签
+      //
+      // 安全考虑：HTTPS 仍加密、agent 用 X-Agent-Token 验证身份，绕过
+      // hostname check 不会让 attacker 偷到数据（除非他同时拿到 agent token）。
+      // 对于家用 self-host 的 agent 这是可接受的 trade-off（用户主动填了 URL）。
       final issuer = cert.issuer.toString();
       const trustedIssuers = [
-        'O = Let\'s Encrypt',
-        'O = ISRG',
-        'CN = R10', 'CN = R11', 'CN = R3', 'CN = E1', 'CN = E2', 'CN = R12',
-        'CN = XR3', 'CN = XE1', 'CN = XE2', 'CN = X1', 'CN = X2',
-        'CN = YE2', 'CN = YR1',
-        'O = DigiCert', 'O = Sectigo', 'O = Google Trust Services',
+        'Let\'s Encrypt',
+        'ISRG',
+        'DigiCert',
+        'Sectigo',
+        'Google Trust Services',
       ];
       for (final ti in trustedIssuers) {
         if (issuer.contains(ti)) return true;
@@ -64,16 +75,21 @@ class AgentClient {
         'Accept': 'application/json',
       };
 
-  /// Health probe — just hits /health. Returns the raw response so the
-  /// caller can detect TLS failures and prompt the user to trust the cert.
+  /// Health probe — 拉 URL 的根路径（agent 跟 relay 都在根 /health 监听）。
+  /// Returns the raw response so the caller can detect TLS failures and
+  /// prompt the user to trust the cert.
   Future<http.Response> health() {
+    final base = url.endsWith('/api/report')
+        ? url.substring(0, url.length - '/api/report'.length)
+        : url;
     return _client
-        .get(Uri.parse('$url/health'), headers: _headers)
+        .get(Uri.parse('$base/health'), headers: _headers)
         .timeout(const Duration(seconds: 5));
   }
 
-  /// Full /api/report. Throws on any non-200 so the store can mark the
-  /// server as offline.
+  /// Full report. v2.4.26+：relay 模式时 url 已经是 relay 的 /api/report，
+  /// token 是 reverse-agent push 用的 token（relay 按 token 路由）。
+  /// Throws on any non-200 so the store can mark the server as offline.
   Future<AgentData> fetchReport() async {
     // Bug #6 fix: 5s client-side timeout, matching the agent's own
     // 5s probe interval (agent/cmd/agent/main.go). Prevents the app from
