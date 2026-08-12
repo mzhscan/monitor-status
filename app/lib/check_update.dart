@@ -17,13 +17,13 @@ class CheckUpdate {
   /// 升级时改这里（iOS / Android 都不用传 dart-define 了，defaultValue 直接是正确值）。
   static const String currentVersion = String.fromEnvironment(
     'APP_VERSION',
-    defaultValue: '2.4.26',
+    defaultValue: '2.4.27',
   );
 
   /// 当前 build number
   static const String currentBuild = String.fromEnvironment(
     'APP_BUILD',
-    defaultValue: '26',
+    defaultValue: '27',
   );
 
   /// GitHub 仓库（owner/name）—— v2.0.0 之后写死
