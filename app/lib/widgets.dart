@@ -213,8 +213,16 @@ class StatusBadge extends StatelessWidget {
       c = const Color(0xFFF59E0B);
       text = '滞后 ${agent.secondsAgo}s';
     } else {
-      c = const Color(0xFFE53935);
-      text = agent.secondsAgo > 0 ? '离线 ${agent.secondsAgo}s' : '无数据';
+      // v2.4.28+ 改动：从未拉过数据时（agent.secondsAgo == 0），文案从"无数据"
+      // 改成"连接中"，颜色从红（offline）改成橙（stale）。
+      // 之前"无数据 + 红色"看起来像"agent 报错"，实际是"app 正在尝试连接，
+      // 第一波 poll 还没回来"。"连接中 + 橙色"更明确表达这个语义。
+      c = agent.secondsAgo > 0
+          ? const Color(0xFFE53935)  // 之前有数据但现在超时 → 红色"离线"
+          : const Color(0xFFF59E0B); // 从未成功过 → 橙色"连接中"
+      text = agent.secondsAgo > 0
+          ? '离线 ${agent.secondsAgo}s'
+          : '连接中';
     }
     return Row(
       mainAxisSize: MainAxisSize.min,

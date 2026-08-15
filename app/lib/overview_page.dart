@@ -55,16 +55,17 @@ class _OverviewPageState extends State<OverviewPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (store.error != null && store.data.isEmpty) {
-      return _ErrorView(message: store.error!, onRetry: () => store.retryAll());
-    }
+    // v2.4.28+ 改动：删掉"整页 _ErrorView 替换" + "loading 转圈圈"
+    // 之前逻辑：store 整体 error + 无 data 时整页替换为红色 _ErrorView（"连不上
+    //          后端" + 重试按钮），覆盖整个 server 列表；或者有 server 但还没
+    //          数据时显示一个 loading 转圈圈。
+    // 问题：打开 app 首次 poll 没回来时，整页都是红色错误页 + 转圈圈，用户感
+    //      觉"打开 app 就是错误"，完全看不到 server card，体验差。
+    // 新逻辑：server card 永远直接显示。没 data 时 card 内部已经显示
+    //        "暂无数据（首次拉取中）" + 重试按钮（line 502-518）。
+    //        用户可以下拉刷新（RefreshIndicator）或等 5s 自动轮询。
     if (store.servers.isEmpty) {
       return _EmptyView(store: store);
-    }
-    if (store.data.isEmpty && store.servers.isNotEmpty) {
-      // We have servers registered but no live data yet — show a light
-      // spinner instead of the full-screen error.
-      return const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B95)));
     }
 
     return Stack(
@@ -825,31 +826,13 @@ class StatusBadge extends StatelessWidget {
   }
 }
 
-class _ErrorView extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-  const _ErrorView({required this.message, required this.onRetry});
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline_rounded, color: Color(0xFFE53935), size: 56),
-            const SizedBox(height: 12),
-            const Text('连不上后端', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A))),
-            const SizedBox(height: 8),
-            Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF7A7A82), fontSize: 12)),
-            const SizedBox(height: 16),
-            FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh_rounded), label: const Text('重试')),
-          ],
-        ),
-      ),
-    );
-  }
-}
+// ============================================================
+// _ErrorView（v2.4.28+ 删除）
+// 之前在 build 顶部用 if (store.error != null && store.data.isEmpty)
+// 整页替换为红色 _ErrorView（"连不上后端" + 重试），覆盖所有 server card。
+// v2.4.28+ 删掉，让 server card 永远直接显示（card 内部已经有"暂无数据"
+// + 重试按钮 line 502-518）。需要重试用户可以下拉刷新。
+// ============================================================
 
 class _RefreshBtn extends StatelessWidget {
   final VoidCallback onTap;
