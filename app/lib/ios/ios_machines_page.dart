@@ -530,9 +530,6 @@ class _IOSMachinesPageState extends State<IOSMachinesPage> {
     }
   }
 
-  void _openAddPage() {
-    Navigator.of(context).pushNamed('/add');
-  }
 }
 
 // ============================================================
@@ -571,7 +568,7 @@ class _EmptyView extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             const Text(
-              '点击右上角 + 按钮，添加你的第一台服务器',
+              '点击底部 tab bar 的「添加」，添加你的第一台服务器',
               style: TextStyle(color: IOSTheme.textTertiary, fontSize: 13),
               textAlign: TextAlign.center,
             ),

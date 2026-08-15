@@ -53,3 +53,8 @@ app/android/app/keystore/
 # GitHub Actions workflows (push via API due to PAT scope)
 .github/workflows/*
 !.github/workflows/.keep
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+ios-native/build/
