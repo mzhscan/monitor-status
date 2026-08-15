@@ -1,53 +1,89 @@
 // Design tokens —— 对齐 Flutter 版 lib/ios/ios_theme.dart（粉色 #FF6B95 + 白底）
 // 以及 lib/ios/ios_helpers.dart 的状态/用量/温度判定逻辑。
+// 深色模式：苹果原生风——背景纯黑→深灰渐变，卡片 #1C1C1E 实心深灰，
+// 所有 token 随系统外观自动切换（UIColor dynamic provider）。
 
 import SwiftUI
 
 enum Theme {
-    // 主色：粉色（跟安卓 Color(0xFFFF6B95) 完全一致）
-    static let primary = Color(red: 1.0, green: 0x6B / 255.0, blue: 0x95 / 255.0)
-    static let primaryDark = Color(red: 0xE5 / 255.0, green: 0x50 / 255.0, blue: 0x7A / 255.0)
-    static let primaryLight = Color(red: 1.0, green: 0xB6 / 255.0, blue: 0xC1 / 255.0)
+    /// 构造随系统外观切换的动态颜色
+    private static func dynamic(light: Color, dark: Color) -> Color {
+        Color(uiColor: UIColor { traits in
+            UIColor(traits.userInterfaceStyle == .dark ? dark : light)
+        })
+    }
 
-    // 语义色（跟安卓一致）
+    // 主色：粉色（跟安卓 Color(0xFFFF6B95) 完全一致；深色下提亮一档保证可读性）
+    static let primary = dynamic(
+        light: Color(red: 1.0, green: 0x6B / 255.0, blue: 0x95 / 255.0),
+        dark: Color(red: 1.0, green: 0x7F / 255.0, blue: 0xA6 / 255.0))
+    static let primaryDark = dynamic(
+        light: Color(red: 0xE5 / 255.0, green: 0x50 / 255.0, blue: 0x7A / 255.0),
+        dark: Color(red: 1.0, green: 0x6B / 255.0, blue: 0x95 / 255.0))
+    static let primaryLight = dynamic(
+        light: Color(red: 1.0, green: 0xB6 / 255.0, blue: 0xC1 / 255.0),
+        dark: Color(red: 0x8E / 255.0, green: 0x5C / 255.0, blue: 0x6E / 255.0))
+
+    // 语义色（跟安卓一致；这两个色在深色底上对比度足够，不切换）
     static let success = Color(red: 0x10 / 255.0, green: 0xB9 / 255.0, blue: 0x81 / 255.0)
     static let warning = Color(red: 0xF5 / 255.0, green: 0x9E / 255.0, blue: 0x0B / 255.0)
     static let danger = Color(red: 0xE5 / 255.0, green: 0x39 / 255.0, blue: 0x35 / 255.0)
     static let info = Color(red: 0x4F / 255.0, green: 0x8E / 255.0, blue: 0xF7 / 255.0)
 
-    // 背景渐变（白 + 浅粉）
+    // 背景渐变：浅色白+浅粉；深色纯黑→#1A1A1E（苹果原生深色底）
     static let backgroundGradient = LinearGradient(
         colors: [
-            Color.white,
-            Color(red: 1.0, green: 0xE4 / 255.0, blue: 0xEC / 255.0),
-            Color(red: 1.0, green: 0xF0 / 255.0, blue: 0xF5 / 255.0),
-            Color.white,
+            dynamic(light: .white, dark: .black),
+            dynamic(light: Color(red: 1.0, green: 0xE4 / 255.0, blue: 0xEC / 255.0),
+                    dark: Color(red: 0x10 / 255.0, green: 0x10 / 255.0, blue: 0x12 / 255.0)),
+            dynamic(light: Color(red: 1.0, green: 0xF0 / 255.0, blue: 0xF5 / 255.0),
+                    dark: Color(red: 0x1A / 255.0, green: 0x1A / 255.0, blue: 0x1E / 255.0)),
+            dynamic(light: .white, dark: .black),
         ],
         startPoint: .top,
         endPoint: .bottom
     )
 
-    // 进度条轨道 / chip 背景
-    static let trackBackground = Color(red: 1.0, green: 0xF4 / 255.0, blue: 0xF7 / 255.0)
-    static let cardChipBackground = Color(red: 1.0, green: 0xEE / 255.0, blue: 0xF2 / 255.0)
+    // 进度条轨道 / chip 背景（深色下用系统填充色阶）
+    static let trackBackground = dynamic(
+        light: Color(red: 1.0, green: 0xF4 / 255.0, blue: 0xF7 / 255.0),
+        dark: Color(red: 0x2C / 255.0, green: 0x2C / 255.0, blue: 0x2E / 255.0))
+    static let cardChipBackground = dynamic(
+        light: Color(red: 1.0, green: 0xEE / 255.0, blue: 0xF2 / 255.0),
+        dark: Color(red: 0x3A / 255.0, green: 0x3A / 255.0, blue: 0x3C / 255.0))
 
-    // 文字
-    static let textPrimary = Color(red: 0x1A / 255.0, green: 0x1A / 255.0, blue: 0x1A / 255.0)
-    static let textSecondary = Color(red: 0x2C / 255.0, green: 0x2C / 255.0, blue: 0x2C / 255.0)
-    static let textTertiary = Color(red: 0x7A / 255.0, green: 0x7A / 255.0, blue: 0x82 / 255.0)
+    // 文字（深色下对齐系统 label 色阶）
+    static let textPrimary = dynamic(
+        light: Color(red: 0x1A / 255.0, green: 0x1A / 255.0, blue: 0x1A / 255.0),
+        dark: Color(red: 0xF2 / 255.0, green: 0xF2 / 255.0, blue: 0xF7 / 255.0))
+    static let textSecondary = dynamic(
+        light: Color(red: 0x2C / 255.0, green: 0x2C / 255.0, blue: 0x2C / 255.0),
+        dark: Color(red: 0xC7 / 255.0, green: 0xC7 / 255.0, blue: 0xCC / 255.0))
+    static let textTertiary = dynamic(
+        light: Color(red: 0x7A / 255.0, green: 0x7A / 255.0, blue: 0x82 / 255.0),
+        dark: Color(red: 0x8E / 255.0, green: 0x8E / 255.0, blue: 0x93 / 255.0))
 
-    // 卡片背景：纯白 #FFFFFF，透明度 0%（完全不透明、实心）
-    static let cardBackground = Color(red: 1.0, green: 1.0, blue: 1.0).opacity(1.0)
+    // 卡片背景：浅色纯白实心；深色 #1C1C1E 实心（secondarySystemGroupedBackground 同值）
+    static let cardBackground = dynamic(
+        light: Color(red: 1.0, green: 1.0, blue: 1.0),
+        dark: Color(red: 0x1C / 255.0, green: 0x1C / 255.0, blue: 0x1E / 255.0))
 
-    // 卡片阴影（加深一档，白底上更明显）
-    static let cardShadow = Color.black.opacity(0.12)
+    // 卡片描边：浅色淡粉；深色白色微亮边（深底上粉描边会脏）
+    static let cardStroke = dynamic(
+        light: Color(red: 1.0, green: 0xB6 / 255.0, blue: 0xC1 / 255.0).opacity(0.35),
+        dark: Color.white.opacity(0.10))
+
+    // 卡片阴影（深色底上加深才有层次）
+    static let cardShadow = dynamic(
+        light: Color.black.opacity(0.12),
+        dark: Color.black.opacity(0.5))
 }
 
-// MARK: - 卡片表面（纯白底 + 淡粉描边 + 阴影）
+// MARK: - 卡片表面（实心底 + 描边 + 阴影，浅深自动适配）
 
 extension View {
-    /// 统一白卡外观：纯白不透明底（#FFFFFF）+ 柔和阴影 + 淡粉细描边
-    func cardSurface(cornerRadius: CGFloat, stroke: Color = Theme.primaryLight.opacity(0.35)) -> some View {
+    /// 统一卡片外观：实心底 + 柔和阴影 + 细描边（浅色淡粉 / 深色微白）
+    func cardSurface(cornerRadius: CGFloat, stroke: Color = Theme.cardStroke) -> some View {
         self
             .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: cornerRadius))
             .shadow(color: Theme.cardShadow, radius: 14, x: 0, y: 5)
