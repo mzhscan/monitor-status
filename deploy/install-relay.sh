@@ -11,7 +11,7 @@
 #   sudo bash install-relay.sh --version v2.4.24 --port 9200 \
 #     --tokens "tok-a,tok-b" --external-host usvps.mzhhua.cn
 #
-# 墙内/无 github：先在能翻墙的机器上下载 relay-server-linux-amd64（arm64），
+# 墙内/无 github：先在能翻墙的机器上下载 星黎监控-无公网服务端-amd64-$VERSION（arm64），
 # scp 过去后用 --binary 跳过下载。
 
 set -euo pipefail
@@ -243,6 +243,8 @@ case "$VERSION" in
   v*) ;;
   *) VERSION="v$VERSION" ;;
 esac
+# Asset 文件名不带 v 前缀（星黎监控-无公网服务端-amd64-3.0.0），拼 URL 用
+VERSION_NOV="${VERSION#v}"
 
 # ===== 端口 =====
 if [[ -z "$PORT" ]]; then
@@ -380,13 +382,13 @@ if [[ -n "$BINARY_PATH" ]]; then
   echo "📦 使用本地 binary: $BINARY_PATH"
   cp "$BINARY_PATH" "$BIN_DIR/relay-server"
 else
-  echo "📥 下载 relay-server-$VERSION-linux-$GOARCH ..."
-  URL="https://github.com/$REPO/releases/download/$VERSION/relay-server-linux-$GOARCH"
+  echo "📥 下载 星黎监控-无公网服务端-$VERSION_NOV-linux-$GOARCH ..."
+  URL="https://github.com/$REPO/releases/download/$VERSION_NOV/星黎监控-无公网服务端-$GOARCH-$VERSION_NOV"
   if ! curl -fsSL --connect-timeout 8 -m 120 -o "$BIN_DIR/relay-server" "$URL"; then
     echo ""
     echo "❌ 下载失败：$URL" >&2
     echo "💡 国内/墙内解决：在能翻墙的机器上下载 + scp 过来：" >&2
-    echo "   scp -P <port> relay-server-linux-$GOARCH root@<server>:/tmp/relay-server" >&2
+    echo "   scp -P <port> 星黎监控-无公网服务端-$GOARCH-$VERSION_NOV root@<server>:/tmp/relay-server" >&2
     echo "   然后重跑加 --binary /tmp/relay-server" >&2
     exit 1
   fi
