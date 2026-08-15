@@ -9,8 +9,8 @@
 #     sudo bash -s -- --version v2.2.0
 #
 # 墙内 / server 访问不到 github.com 时：
-#   1) 在能翻墙的机器上下载 星黎监控-有公网客户端-amd64-$VERSION（或 arm64）
-#   2) scp 过去：scp 星黎监控-有公网客户端-amd64-$VERSION root@server:/tmp/agent
+#   1) 在能翻墙的机器上下载 xingli-pub-$GOARCH-$VERSION（或 arm64）
+#   2) scp 过去：scp xingli-pub-amd64-$VERSION root@server:/tmp/agent
 #   3) 加 --binary 跳过 GitHub 下载：
 #      sudo bash install-agent.sh --version latest --binary /tmp/agent
 #
@@ -92,7 +92,7 @@ if [[ "$VERSION" == "latest" ]]; then
     echo "   1) 显式指定版本号：" >&2
     echo "      sudo bash install-agent.sh --version vX.Y.Z --name <n> --token <t>" >&2
     echo "   2) 跳过 GitHub 下载，先本地传 binary：" >&2
-    echo "      scp 星黎监控-有公网客户端-${GOARCH}-${LATEST_TAG} root@<server>:/tmp/agent" >&2
+    echo "      scp xingli-pub-${GOARCH}-${LATEST_TAG} root@<server>:/tmp/agent" >&2
     echo "      sudo bash install-agent.sh --version latest --binary /tmp/agent" >&2
     exit 1
   fi
@@ -101,7 +101,7 @@ if [[ "$VERSION" == "latest" ]]; then
 fi
 
 VERSION_NOV="${VERSION#v}"  # strip leading 'v' (e.g. v3.0.0 -> 3.0.0)
-URL="https://github.com/${REPO}/releases/download/${VERSION_NOV}/星黎监控-有公网客户端-${GOARCH}-${VERSION_NOV}"
+URL="https://github.com/${REPO}/releases/download/${VERSION_NOV}/xingli-pub-${GOARCH}-${VERSION_NOV}"
 
 # ===== 下载 / 取本地 binary =====
 if [[ -n "$BINARY_PATH" ]]; then
@@ -121,7 +121,7 @@ else
     echo "💡 国内/墙内解决方法：在能翻墙的机器上先下载好，再 scp 过来：" >&2
     echo "   # 在你本地 Mac 执行：" >&2
     echo "   curl -fsSL -O '$URL'" >&2
-    echo "   scp -P <port> 星黎监控-有公网客户端-${GOARCH}-${VERSION_NOV} root@<server>:/tmp/agent" >&2
+    echo "   scp -P <port> xingli-pub-${GOARCH}-${VERSION_NOV} root@<server>:/tmp/agent" >&2
     echo "" >&2
     echo "   # 然后在 server 上重新跑本脚本，加 --binary 参数：" >&2
     echo "   sudo bash install-agent.sh --version $VERSION --name <name> --token <token> --binary /tmp/agent" >&2

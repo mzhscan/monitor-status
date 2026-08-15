@@ -2,28 +2,35 @@
 
 多服务器硬件 + 3xui 流量监控。**无后端** —— Android app 直连每台机器。
 
-## 3 个组件（按机器场景分）
+## Binary 一览（3 个组件，按机器场景分）
 
-| 文件名 | 场景 | 装在哪 | 干嘛的 |
+| 文件名 | 中文别名 | 装在哪 | 干嘛的 |
 |---|---|---|---|
-| `星黎监控-有公网客户端-amd64-X.Y.Z` | 有公网机器 | 有公网 IP 的 Linux x86_64（VPS、PC） | app 直接连这台机器拉数据 |
-| `星黎监控-有公网客户端-arm64-X.Y.Z` | 有公网机器 | 有公网 IP 的 Linux ARM（树莓派、ARM VPS、NAS） | 同上 |
-| `星黎监控-无公网服务端-amd64-X.Y.Z` | 公网代理 | 有公网 IP 的 Linux x86_64（只需要 1 台） | 接收无公网机器 push 的数据 + 提供网页版 dashboard |
-| `星黎监控-无公网服务端-arm64-X.Y.Z` | 公网代理 | 有公网 IP 的 Linux ARM | 同上 |
-| `星黎监控-无公网客户端-amd64-X.Y.Z` | 内网机器 | **没**公网 IP 的内网 Linux x86_64 | 主动连公网代理，每 5 秒 push 一次数据 |
-| `星黎监控-无公网客户端-arm64-X.Y.Z` | 内网机器 | **没**公网 IP 的内网 Linux ARM | 同上 |
+| `xingli-pub-amd64-X.Y.Z` | **有公网客户端**（x86_64） | 有公网 IP 的 Linux x86_64（VPS、PC） | app 直接连这台机器拉数据 |
+| `xingli-pub-arm64-X.Y.Z` | **有公网客户端**（ARM） | 有公网 IP 的 Linux ARM（树莓派、ARM VPS、NAS） | 同上，ARM 架构 |
+| `xingli-relay-amd64-X.Y.Z` | **无公网服务端**（x86_64） | 有公网 IP 的 Linux x86_64（只需要 1 台） | 接收内网机器 push 的数据 + 提供网页版 dashboard |
+| `xingli-relay-arm64-X.Y.Z` | **无公网服务端**（ARM） | 有公网 IP 的 Linux ARM | 同上，ARM 架构 |
+| `xingli-pri-amd64-X.Y.Z` | **无公网客户端**（x86_64） | **没**公网 IP 的内网 Linux x86_64 | 主动连公网代理，每 5 秒 push 一次数据 |
+| `xingli-pri-arm64-X.Y.Z` | **无公网客户端**（ARM） | **没**公网 IP 的内网 Linux ARM | 同上，ARM 架构 |
+| `xingli-X.Y.Z.apk` | Android app | — | 装到手机 |
 
-**一句话选**：
+**简短对照**：
 
-- 🖥️ **有公网 IP 的机器** → 装「**有公网客户端**」
+- `pub` = public = **有公网**
+- `relay` = **无公网服务端**（公网代理）
+- `pri` = private = **无公网**
+
+**按场景选**：
+
+- 🖥️ **有公网 IP 的机器** → 装 `xingli-pub`（**有公网客户端**）
 - 🌐 **没公网 IP 的内网机器**：
-  1. 在 1 台有公网 IP 的机器上装「**无公网服务端**」
-  2. 在内网机器上装「**无公网客户端**」，连那台无公网服务端
-- 💡 **想看网页版 dashboard**：额外装一个「**无公网服务端**」（同一台也行），配置「有公网客户端」URL
+  1. 在 1 台有公网 IP 的机器上装 `xingli-relay`（**无公网服务端**）
+  2. 在内网机器上装 `xingli-pri`（**无公网客户端**），连那台 relay
+- 💡 **想看网页版 dashboard**：额外装一个 `xingli-relay`（同一台也行），配置「有公网客户端」URL
 
 ## Android app
 
-去 [Releases](https://github.com/mzhscan/monitor-status/releases) 下载 `星黎监控-X.Y.Z.apk` 装到手机。
+去 [Releases](https://github.com/mzhscan/monitor-status/releases) 下载 `xingli-X.Y.Z.apk` 装到手机。
 
 **首次启动会自动弹"添加服务器"对话框**，按提示填显示名称 + URL + token 即可。如果首次没弹或之后删光了所有 server，点底部 **+** tab 手动加。
 
@@ -31,7 +38,7 @@
 
 ## 一键部署
 
-### 1️⃣ 装「有公网客户端」（有公网 IP 的机器）
+### 1️⃣ 装「有公网客户端」（`xingli-pub`，有公网 IP 的机器）
 
 在**每台**有公网的机器上：
 
@@ -59,7 +66,7 @@ sudo bash install-agent.sh --version latest \
 
 ### 2️⃣ 没公网 IP？装「无公网服务端」+「无公网客户端」
 
-#### 装「无公网服务端」（1 台公网机器）
+#### 装「无公网服务端」（`xingli-relay`，1 台公网机器）
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-relay.sh | sudo bash
@@ -67,7 +74,7 @@ curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/
 
 跑完会一步步问：端口 / token / 公网域名 / 防火墙 ... 全程回车 + 选数字即可。
 
-#### 装「无公网客户端」（内网机器）
+#### 装「无公网客户端」（`xingli-pri`，内网机器）
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/install-reverse-agent.sh | sudo bash
@@ -238,9 +245,9 @@ usvps|https://usvps.mzhhua.cn:9009/api/report|<有公网客户端的 AGENT_TOKEN
 
 ```bash
 # 后端（单 module 跨 cmd/）
-go run ./cmd/agent            # 有公网客户端
-go run ./cmd/relay-server     # 无公网服务端
-go run ./cmd/reverse-agent    # 无公网客户端
+go run ./cmd/agent            # → xingli-pub      （有公网客户端）
+go run ./cmd/relay-server     # → xingli-relay   （无公网服务端）
+go run ./cmd/reverse-agent    # → xingli-pri      （无公网客户端）
 
 # Flutter
 cd app
@@ -255,7 +262,7 @@ git tag X.Y.Z          # 不带 v 前缀
 git push origin X.Y.Z
 ```
 
-Release workflow 自动 build 6 个 binary + 1 个 APK + SHA256SUMS，按中文场景名发布。
+Release workflow 自动 build 6 个 binary + 1 个 APK + SHA256SUMS，按 ASCII 命名 `xingli-<角色>-<架构>-<版本>` 发布。
 
 ## License
 
