@@ -218,13 +218,26 @@ usvps|https://usvps.mzhhua.cn:9009/api/report|<usvps 的 AGENT_TOKEN>
 
 每个 agent 独立一个 server 项（没有"统一面板"概念）。**默认按字母排序**，长按任意卡片的菜单 → 「排序」可进入 iOS 风格的拖动排序模式。
 
-## Agent 平台
+## Binary 一览（3 个组件，按场景分）
 
-release 里有：
-- `agent-linux-amd64`：x86_64 Linux（PC、VPS、普通 Linux）
-- `agent-linux-arm64`：aarch64 Linux（树莓派 4/5、ARM VPS、Apple Silicon Mac mini、NAS）
-- `relay-server-linux-amd64` / `relay-server-linux-arm64`：v2.4.24+，公网代理（见上）
-- `reverse-agent-linux-amd64` / `reverse-agent-linux-arm64`：v2.4.24+，内网推送客户端（见上）
+| Binary | 中文别名 | 装在哪 | 干嘛的 |
+|---|---|---|---|
+| `agent-linux-amd64` | **公网直连版**（x86_64） | 有公网 IP 的 Linux x86_64（VPS、PC） | 监听 9101，app 直接连这台机器拉数据 |
+| `agent-linux-arm64` | **公网直连版**（ARM） | 有公网 IP 的 Linux ARM（树莓派、ARM VPS、Apple Silicon Mac mini、NAS） | 同上，ARM 架构 |
+| `relay-server-linux-amd64` | **公网中转版**（x86_64） | 有公网 IP 的 Linux x86_64（只需要 1 台） | 接收内网机器 push 的数据，再转发给 app；同时提供 `/web/` 网页版 dashboard |
+| `relay-server-linux-arm64` | **公网中转版**（ARM） | 有公网 IP 的 Linux ARM | 同上，ARM 架构 |
+| `reverse-agent-linux-amd64` | **内网推送版**（x86_64） | **没**公网 IP 的内网 Linux x86_64 | 主动连公网 relay，每 5 秒 push 一次数据 |
+| `reverse-agent-linux-arm64` | **内网推送版**（ARM） | **没**公网 IP 的内网 Linux ARM | 同上，ARM 架构 |
+
+**按场景选**：
+
+- 🖥️ **有公网 IP 的机器**：装 `agent`（公网直连版）
+- 🌐 **没公网 IP 的内网机器**：
+  1. 在 1 台有公网 IP 的机器上装 `relay-server`（公网中转版）
+  2. 在内网机器上装 `reverse-agent`（内网推送版），连那台 relay
+- 💡 **有公网 + 想看网页版 dashboard**：再额外装一个 `relay-server`（同一台也行，不同端口），配置公网 agent 的 URL 到 `RELAY_AGENT_ENDPOINTS`
+
+详细部署：[relay/README.md](relay/README.md)
 
 ## Agent 配置（env）
 
