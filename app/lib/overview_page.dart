@@ -78,30 +78,44 @@ class _OverviewPageState extends State<OverviewPage> {
     );
   }
 
-  // ----- List (the same content as v2.3.0, just wrapped in a builder) -----
+  // ----- List (lazy-built: 只 build 屏幕 viewport 内的 card) -----
+  // v3.0.0 性能优化：之前用 ListView(children: [for ...])，每次 setState
+  // （5s poll 触发）会实例化所有 card 的 widget 对象（哪怕在 viewport 外），
+  // 5+ 台机器就明显。改 ListView.builder 后，只在 viewport 内的 card 才
+  // build，滚动时新进入 viewport 的才 build。
   Widget _buildList() {
     return RefreshIndicator(
       color: const Color(0xFFFF6B95),
       backgroundColor: Colors.white,
       onRefresh: () async => Future.delayed(const Duration(milliseconds: 500)),
-      child: ListView(
+      child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-        children: [
-          // 错误提示挪到 AppBar 右上角红 icon + 错误详情页（v2.4.16）
-          // 排序模式 banner：iOS 主屏编辑风格的"完成"条。仅在 sort mode 时显示。
-          if (_isSortMode) _buildSortModeBanner(),
-          for (int i = 0; i < store.orderedServers.length; i++)
-            _buildCardSlot(i),
-          const SizedBox(height: 8),
-          if (store.lastSuccessAt != null)
-            Center(
+        // index 0: 可选 sort banner
+        // index 1..N: 卡片
+        // 最后一格: footer（"更新于 ..."）
+        itemCount: store.orderedServers.length + (_isSortMode ? 1 : 0) + 1,
+        itemBuilder: (context, i) {
+          int offset = 0;
+          if (_isSortMode) {
+            if (i == 0) return _buildSortModeBanner();
+            offset = 1;
+          }
+          final cardIndex = i - offset;
+          if (cardIndex < store.orderedServers.length) {
+            return _buildCardSlot(cardIndex);
+          }
+          // footer (index 超出 cards 范围)
+          if (store.lastSuccessAt != null) {
+            return Center(
               key: const ValueKey('last-success'),
               child: Text(
                 '更新于 ${_fmtTime(store.lastSuccessAt!)}',
                 style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11),
               ),
-            ),
-        ],
+            );
+          }
+          return const SizedBox(height: 8);
+        },
       ),
     );
   }
@@ -446,6 +460,18 @@ class _ServerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // v3.0.0 性能优化：用 ListenableBuilder 显式订阅 store。
+    // 之前直接调用 store.agentFor(server) 会通过 InheritedNotifier
+    // 注册 context.monitor 依赖，导致 5s poll notifyListeners() 时
+    // 整张 list rebuild。这里改用 ListenableBuilder，只 card 内部 rebuild，
+    // 不影响其他 card 和 list 本身。
+    return ListenableBuilder(
+      listenable: store,
+      builder: (context, _) => _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     final agent = store.agentFor(server);
     final hw = agent?.hardware;
     final cpu = hw?.cpu;
