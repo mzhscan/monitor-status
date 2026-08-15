@@ -1,0 +1,575 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		CC0000000000000000000001 /* XingLiMonitorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000001 /* XingLiMonitorApp.swift */; };
+		CC0000000000000000000002 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000002 /* Theme.swift */; };
+		CC0000000000000000000003 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000005 /* Models.swift */; };
+		CC0000000000000000000004 /* AgentClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000006 /* AgentClient.swift */; };
+		CC0000000000000000000005 /* TrustStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000007 /* TrustStore.swift */; };
+		CC0000000000000000000006 /* MonitorStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000008 /* MonitorStore.swift */; };
+		CC0000000000000000000007 /* CheckUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000009 /* CheckUpdate.swift */; };
+		CC0000000000000000000008 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000A /* RootView.swift */; };
+		CC0000000000000000000009 /* MachinesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000B /* MachinesView.swift */; };
+		CC000000000000000000000A /* DetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000C /* DetailView.swift */; };
+		CC000000000000000000000B /* AddEditServerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000D /* AddEditServerView.swift */; };
+		CC000000000000000000000C /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000E /* SettingsView.swift */; };
+		CC000000000000000000000D /* ErrorDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000F /* ErrorDetailsView.swift */; };
+		CC000000000000000000000E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000004 /* Assets.xcassets */; };
+		CF0000000000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CF0000000000000000000002 /* Assets.xcassets */; };
+		CF0000000000000000000003 /* BackgroundRefresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF0000000000000000000004 /* BackgroundRefresh.swift */; };
+		CC000000000000000000000F /* WatchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000010 /* WatchBridge.swift */; };
+		CC0000000000000000000010 /* WatchSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000011 /* WatchSnapshot.swift */; };
+		CD0000000000000000000001 /* XingLiMonitorWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000012 /* XingLiMonitorWatchApp.swift */; };
+		CD0000000000000000000002 /* WatchSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000013 /* WatchSession.swift */; };
+		CD0000000000000000000003 /* WatchOverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000014 /* WatchOverviewView.swift */; };
+		CD0000000000000000000004 /* WatchDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000015 /* WatchDetailView.swift */; };
+		CD0000000000000000000005 /* WatchSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000011 /* WatchSnapshot.swift */; };
+		CE0000000000000000000001 /* XingLiMonitorWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000017 /* XingLiMonitorWatch.app */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		CE0000000000000000000003 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AA0000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA0000000000000000000014;
+			remoteInfo = XingLiMonitorWatch;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		CE0000000000000000000002 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				CE0000000000000000000001 /* XingLiMonitorWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		AA0000000000000000000004 /* XingLiMonitor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = XingLiMonitor.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BB0000000000000000000001 /* XingLiMonitorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XingLiMonitorApp.swift; sourceTree = "<group>"; };
+		BB0000000000000000000002 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		BB0000000000000000000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		BB0000000000000000000004 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		CF0000000000000000000002 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		CF0000000000000000000004 /* BackgroundRefresh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundRefresh.swift; sourceTree = "<group>"; };
+		BB0000000000000000000005 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		BB0000000000000000000006 /* AgentClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentClient.swift; sourceTree = "<group>"; };
+		BB0000000000000000000007 /* TrustStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrustStore.swift; sourceTree = "<group>"; };
+		BB0000000000000000000008 /* MonitorStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorStore.swift; sourceTree = "<group>"; };
+		BB0000000000000000000009 /* CheckUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckUpdate.swift; sourceTree = "<group>"; };
+		BB000000000000000000000A /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		BB000000000000000000000B /* MachinesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MachinesView.swift; sourceTree = "<group>"; };
+		BB000000000000000000000C /* DetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailView.swift; sourceTree = "<group>"; };
+		BB000000000000000000000D /* AddEditServerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddEditServerView.swift; sourceTree = "<group>"; };
+		BB000000000000000000000E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		BB000000000000000000000F /* ErrorDetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorDetailsView.swift; sourceTree = "<group>"; };
+		BB0000000000000000000010 /* WatchBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchBridge.swift; sourceTree = "<group>"; };
+		BB0000000000000000000011 /* WatchSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSnapshot.swift; sourceTree = "<group>"; };
+		BB0000000000000000000012 /* XingLiMonitorWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XingLiMonitorWatchApp.swift; sourceTree = "<group>"; };
+		BB0000000000000000000013 /* WatchSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSession.swift; sourceTree = "<group>"; };
+		BB0000000000000000000014 /* WatchOverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchOverviewView.swift; sourceTree = "<group>"; };
+		BB0000000000000000000015 /* WatchDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchDetailView.swift; sourceTree = "<group>"; };
+		BB0000000000000000000016 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		BB0000000000000000000017 /* XingLiMonitorWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = XingLiMonitorWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AA000000000000000000000E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000000000000000000017 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		AA0000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				AA000000000000000000000F /* XingLiMonitor */,
+				AA0000000000000000000013 /* XingLiMonitorWatch */,
+				AA0000000000000000000012 /* Shared */,
+				AA0000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000000004 /* XingLiMonitor.app */,
+				BB0000000000000000000017 /* XingLiMonitorWatch.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000000F /* XingLiMonitor */ = {
+			isa = PBXGroup;
+			children = (
+				BB0000000000000000000001 /* XingLiMonitorApp.swift */,
+				BB0000000000000000000002 /* Theme.swift */,
+				AA0000000000000000000010 /* Core */,
+				AA0000000000000000000011 /* Views */,
+				BB0000000000000000000004 /* Assets.xcassets */,
+				BB0000000000000000000003 /* Info.plist */,
+			);
+			path = XingLiMonitor;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000010 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				BB0000000000000000000005 /* Models.swift */,
+				BB0000000000000000000006 /* AgentClient.swift */,
+				BB0000000000000000000007 /* TrustStore.swift */,
+				BB0000000000000000000008 /* MonitorStore.swift */,
+				BB0000000000000000000009 /* CheckUpdate.swift */,
+				BB0000000000000000000010 /* WatchBridge.swift */,
+				CF0000000000000000000004 /* BackgroundRefresh.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000011 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				BB000000000000000000000A /* RootView.swift */,
+				BB000000000000000000000B /* MachinesView.swift */,
+				BB000000000000000000000C /* DetailView.swift */,
+				BB000000000000000000000D /* AddEditServerView.swift */,
+				BB000000000000000000000E /* SettingsView.swift */,
+				BB000000000000000000000F /* ErrorDetailsView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000012 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				BB0000000000000000000011 /* WatchSnapshot.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000013 /* XingLiMonitorWatch */ = {
+			isa = PBXGroup;
+			children = (
+				BB0000000000000000000012 /* XingLiMonitorWatchApp.swift */,
+				BB0000000000000000000013 /* WatchSession.swift */,
+				BB0000000000000000000014 /* WatchOverviewView.swift */,
+				BB0000000000000000000015 /* WatchDetailView.swift */,
+				BB0000000000000000000016 /* Info.plist */,
+				CF0000000000000000000002 /* Assets.xcassets */,
+			);
+			path = XingLiMonitorWatch;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AA0000000000000000000005 /* XingLiMonitor */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA0000000000000000000006 /* Build configuration list for PBXNativeTarget "XingLiMonitor" */;
+			buildPhases = (
+				AA000000000000000000000C /* Sources */,
+				AA000000000000000000000E /* Frameworks */,
+				AA000000000000000000000D /* Resources */,
+				CE0000000000000000000002 /* Embed Watch Content */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CE0000000000000000000004 /* PBXTargetDependency */,
+			);
+			name = XingLiMonitor;
+			productName = XingLiMonitor;
+			productReference = AA0000000000000000000004 /* XingLiMonitor.app */;
+			productType = "com.apple.product-type.application";
+		};
+		AA0000000000000000000014 /* XingLiMonitorWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA0000000000000000000015 /* Build configuration list for PBXNativeTarget "XingLiMonitorWatch" */;
+			buildPhases = (
+				AA0000000000000000000016 /* Sources */,
+				AA0000000000000000000017 /* Frameworks */,
+				AA0000000000000000000018 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = XingLiMonitorWatch;
+			productName = XingLiMonitorWatch;
+			productReference = BB0000000000000000000017 /* XingLiMonitorWatch.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AA0000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					AA0000000000000000000005 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					AA0000000000000000000014 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = AA0000000000000000000009 /* Build configuration list for PBXProject "XingLiMonitor" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = AA0000000000000000000002;
+			productRefGroup = AA0000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				AA0000000000000000000005 /* XingLiMonitor */,
+				AA0000000000000000000014 /* XingLiMonitorWatch */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		AA000000000000000000000D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC000000000000000000000E /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000000000000000000018 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CF0000000000000000000001 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		AA000000000000000000000C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC0000000000000000000001 /* XingLiMonitorApp.swift in Sources */,
+				CC0000000000000000000002 /* Theme.swift in Sources */,
+				CC0000000000000000000003 /* Models.swift in Sources */,
+				CC0000000000000000000004 /* AgentClient.swift in Sources */,
+				CC0000000000000000000005 /* TrustStore.swift in Sources */,
+				CC0000000000000000000006 /* MonitorStore.swift in Sources */,
+				CC0000000000000000000007 /* CheckUpdate.swift in Sources */,
+				CC0000000000000000000008 /* RootView.swift in Sources */,
+				CC0000000000000000000009 /* MachinesView.swift in Sources */,
+				CC000000000000000000000A /* DetailView.swift in Sources */,
+				CC000000000000000000000B /* AddEditServerView.swift in Sources */,
+				CC000000000000000000000C /* SettingsView.swift in Sources */,
+				CC000000000000000000000D /* ErrorDetailsView.swift in Sources */,
+				CC000000000000000000000F /* WatchBridge.swift in Sources */,
+				CC0000000000000000000010 /* WatchSnapshot.swift in Sources */,
+				CF0000000000000000000003 /* BackgroundRefresh.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000000000000000000016 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CD0000000000000000000001 /* XingLiMonitorWatchApp.swift in Sources */,
+				CD0000000000000000000002 /* WatchSession.swift in Sources */,
+				CD0000000000000000000003 /* WatchOverviewView.swift in Sources */,
+				CD0000000000000000000004 /* WatchDetailView.swift in Sources */,
+				CD0000000000000000000005 /* WatchSnapshot.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		CE0000000000000000000004 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AA0000000000000000000014 /* XingLiMonitorWatch */;
+			targetProxy = CE0000000000000000000003 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		AA0000000000000000000007 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = XingLiMonitor/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "星黎监控";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 3.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mzhhua.monitorstatus;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AA0000000000000000000008 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = XingLiMonitor/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "星黎监控";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 3.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mzhhua.monitorstatus;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		AA000000000000000000000A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 5D47B6AKKF;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		AA000000000000000000000B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 5D47B6AKKF;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		AA0000000000000000000019 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = XingLiMonitorWatch/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "星黎监控";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 3.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mzhhua.monitorstatus.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+				WK_COMPANION_APP_BUNDLE_IDENTIFIER = com.mzhhua.monitorstatus;
+			};
+			name = Debug;
+		};
+		AA000000000000000000001A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = XingLiMonitorWatch/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "星黎监控";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 3.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mzhhua.monitorstatus.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+				WK_COMPANION_APP_BUNDLE_IDENTIFIER = com.mzhhua.monitorstatus;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		AA0000000000000000000006 /* Build configuration list for PBXNativeTarget "XingLiMonitor" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000000000000000000007 /* Debug */,
+				AA0000000000000000000008 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA0000000000000000000009 /* Build configuration list for PBXProject "XingLiMonitor" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA000000000000000000000A /* Debug */,
+				AA000000000000000000000B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA0000000000000000000015 /* Build configuration list for PBXNativeTarget "XingLiMonitorWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000000000000000000019 /* Debug */,
+				AA000000000000000000001A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = AA0000000000000000000001 /* Project object */;
+}

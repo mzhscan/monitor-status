@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 单 target watchOS app（watchOS 9+ 新模型） -->
+	<key>WKApplication</key>
+	<true/>
+	<!-- 伴生 iPhone app 的 Bundle ID（WatchConnectivity 配对依据） -->
+	<key>WKCompanionAppBundleIdentifier</key>
+	<string>com.mzhhua.monitorstatus</string>
+</dict>
+</plist>
