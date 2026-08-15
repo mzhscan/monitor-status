@@ -15,15 +15,17 @@ class CheckUpdate {
   /// 永远返回 isNewer=true（误报"有新版本 2.4.25"），但 store.appVersion 已经在 2.4.26，
   /// 看起来是"显示 2.4.26 但提示升级到 2.4.25"。
   /// 升级时改这里（iOS / Android 都不用传 dart-define 了，defaultValue 直接是正确值）。
+  /// v3.0.0: bump defaultValue 跟 GitHub 最新 release tag 3.0.0 对齐（iOS Swift 重写 + Android Flutter bump）。
   static const String currentVersion = String.fromEnvironment(
     'APP_VERSION',
-    defaultValue: '2.4.27',
+    defaultValue: '3.0.0',
   );
 
   /// 当前 build number
+  /// v3.0.0: bump 27 → 66 跟 release tag 对齐。
   static const String currentBuild = String.fromEnvironment(
     'APP_BUILD',
-    defaultValue: '27',
+    defaultValue: '66',
   );
 
   /// GitHub 仓库（owner/name）—— v2.0.0 之后写死
