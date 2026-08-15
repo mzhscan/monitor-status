@@ -1,6 +1,6 @@
 # 星黎监控
 
-多服务器硬件 + 3xui 流量监控。**无后端** —— Android app 直连每台机器。
+多服务器硬件 + 3xui 流量监控。**无后端** —— app 直连每台机器（Android / iOS / Apple Watch 三端）。
 
 ## Binary 一览（3 个组件，按机器场景分）
 
@@ -13,6 +13,7 @@
 | `xingli-pri-amd64-X.Y.Z` | **无公网客户端**（x86_64） | **没**公网 IP 的内网 Linux x86_64 | 主动连公网代理，每 5 秒 push 一次数据 |
 | `xingli-pri-arm64-X.Y.Z` | **无公网客户端**（ARM） | **没**公网 IP 的内网 Linux ARM | 同上，ARM 架构 |
 | `xingli-X.Y.Z.apk` | Android app | — | 装到手机 |
+| `ios-native/`（源码） | iOS + Apple Watch app | — | 个人签名，自己用 Xcode 编译装机（见下） |
 
 **简短对照**：
 
@@ -35,6 +36,28 @@
 **首次启动会自动弹"添加服务器"对话框**，按提示填显示名称 + URL + token 即可。如果首次没弹或之后删光了所有 server，点底部 **+** tab 手动加。
 
 每个 server 独立一项（没有"统一面板"概念）。**默认按字母排序**，长按任意卡片的菜单 → 「排序」可进入拖动排序模式。
+
+## iOS / Apple Watch app
+
+Swift 原生版（`ios-native/`），功能对齐 Android 版（总览 / 详情 / 添加编辑 / 设置 / 检查更新），iOS 27 Liquid Glass 视觉 + 深色模式适配。复用老 Flutter iOS 版的 Bundle ID，升级后原有服务器 / token / 证书数据无缝迁移。
+
+**Apple Watch 伴生版**（watchOS 26+）：
+
+- 卡片墙首屏：在线汇总 + 每台服务器一张卡（状态色竖条 / CPU·内存迷你条）
+- 详情页：CPU / 内存表盘 + 负载 + **开机以来上下行总量** + 3xui 摘要
+- iPhone 每轮轮询自动推快照到手表；手表可反向触发刷新 / 单台重试
+- 服务器离线 / 恢复本地通知，iPhone 锁屏时自动镜像到手表震动
+- 后台刷新（BGAppRefreshTask）：iPhone 退后台后系统周期性唤醒补轮询
+
+**装机**：个人签名没有分发包，自己编译：
+
+```bash
+open ios-native/XingLiMonitor.xcodeproj
+# Xcode 里选自己的签名 Team，⌘R 装 iPhone；
+# scheme 切 XingLiMonitorWatch 再 ⌘R 装手表
+```
+
+> 手表版必须走 Xcode Run 安装（命令行直装建立不了伴生注册，手表收不到数据）；手表数据依赖 iPhone 版运行（前台轮询或后台唤醒）。
 
 ## 一键部署
 
@@ -253,6 +276,10 @@ go run ./cmd/reverse-agent    # → xingli-pri      （无公网客户端）
 cd app
 flutter pub get
 flutter run --dart-define=GLASS_STYLE=solid
+
+# iOS / watchOS（SwiftUI，Xcode 26+）
+open ios-native/XingLiMonitor.xcodeproj
+# 两个 target：XingLiMonitor（iOS）/ XingLiMonitorWatch（watchOS），共享 Shared/WatchSnapshot.swift 快照模型
 ```
 
 ## 发布
@@ -263,6 +290,8 @@ git push origin X.Y.Z
 ```
 
 Release workflow 自动 build 6 个 binary + 1 个 APK + SHA256SUMS，按 ASCII 命名 `xingli-<角色>-<架构>-<版本>` 发布。
+
+iOS / watchOS 不在 Release 产物里 —— 个人签名没法做通用分发包，从 `ios-native/` 源码自己 Xcode 编译。
 
 ## License
 
