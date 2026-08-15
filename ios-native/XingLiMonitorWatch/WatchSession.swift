@@ -20,23 +20,32 @@ final class WatchSession: NSObject {
 
     /// 让 iPhone 立即轮询一轮（结果经 applicationContext 推回）
     func requestRefresh() {
+        let session = WCSession.default
+        // 不可达（iPhone app 未运行/灭屏等）时不发实时消息，避免刷 not reachable 错误；
+        // 快照会在 iPhone 下次轮询后经 applicationContext 自动送达
+        guard session.activationState == .activated, session.isReachable else { return }
         waiting = true
-        guard WCSession.default.activationState == .activated else { return }
-        WCSession.default.sendMessage(["refresh": true], replyHandler: nil) { [weak self] _ in
+        session.sendMessage(["refresh": true], replyHandler: nil) { [weak self] _ in
             Task { @MainActor in self?.waiting = false }
         }
     }
 
     /// 单台重试
     func retry(id: String) {
-        guard WCSession.default.activationState == .activated else { return }
-        WCSession.default.sendMessage(["retry": id], replyHandler: nil, errorHandler: nil)
+        let session = WCSession.default
+        guard session.activationState == .activated, session.isReachable else { return }
+        session.sendMessage(["retry": id], replyHandler: nil, errorHandler: nil)
     }
 
     fileprivate func apply(context: [String: Any]) {
-        guard let data = context["snapshot"] as? Data,
-              let snap = try? JSONDecoder().decode(WatchSnapshot.self, from: data) else { return }
-        snapshot = snap
+        guard let data = context["snapshot"] as? Data else { return }
+        do {
+            snapshot = try JSONDecoder().decode(WatchSnapshot.self, from: data)
+        } catch {
+            // 快照解码失败（两端版本不一致等）只记日志，不能静默丢数据
+            print("[WatchSession] snapshot decode failed: \(error)")
+            return
+        }
         waiting = false
     }
 }

@@ -66,13 +66,8 @@ final class WatchBridge: NSObject, WCSessionDelegate, UNUserNotificationCenterDe
                 status = "loading"
                 secondsAgo = -1
             }
-            // 磁盘取用量最高的前 2 块（隐藏盘跳过）
-            let disks = (d?.hardware?.disks ?? [])
-                .filter { s.hiddenDisks[$0.name] != true }
-                .sorted { $0.percent > $1.percent }
-                .prefix(2)
-                .map { WatchDisk(name: s.diskAliases[$0.name] ?? ($0.mount.isEmpty ? $0.name : $0.mount),
-                                   pct: $0.percent, usedGb: $0.usedGb, totalGb: $0.totalGb) }
+            // 开机以来上下行总量（agent 读 /proc/net/dev 物理网卡累计）
+            let net = d?.hardware?.network
             let xui = d?.xui
             list.append(WatchServer(
                 id: s.id,
@@ -86,7 +81,8 @@ final class WatchBridge: NSObject, WCSessionDelegate, UNUserNotificationCenterDe
                 memPct: d?.hardware?.memory?.percent,
                 load1: d?.hardware?.load?.l1,
                 uptime: d?.hardware?.uptime,
-                topDisks: Array(disks),
+                rxBytes: net.map { Int64($0.rxBytes) },
+                txBytes: net.map { Int64($0.txBytes) },
                 xuiOnline: xui?.onlineCount,
                 xuiTotalClients: xui?.totalClients,
                 xuiTotalGb: xui.map { $0.totalUpGb + $0.totalDownGb },

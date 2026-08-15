@@ -30,19 +30,14 @@ struct WatchServer: Codable, Identifiable, Hashable {
     var memPct: Double?
     var load1: Double?
     var uptime: String?
-    /// 用量最高的前 2 块盘
-    var topDisks: [WatchDisk]
+    /// 开机以来网络上下行总量（字节，来自 agent 的 /proc/net/dev 累计值）
+    // 默认值 = nil 保证旧版 iPhone 包推来的快照（无此字段）也能解码成功
+    var rxBytes: Int64? = nil
+    var txBytes: Int64? = nil
 
     // MARK: xui（仅 VPS）
     var xuiOnline: Int?
     var xuiTotalClients: Int?
     var xuiTotalGb: Double?
     var traffic72hGb: Double?
-}
-
-struct WatchDisk: Codable, Hashable {
-    var name: String
-    var pct: Double
-    var usedGb: Double
-    var totalGb: Double
 }

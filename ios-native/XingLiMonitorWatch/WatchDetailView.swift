@@ -1,4 +1,4 @@
-// 手表详情页 —— CPU/内存表盘 + 负载/运行时长 + 磁盘 + xui 流量 + 重试。
+// 手表详情页 —— CPU/内存表盘 + 负载/运行时长 + 开机上下行总量 + xui 流量 + 重试。
 
 import SwiftUI
 
@@ -17,8 +17,8 @@ struct WatchDetailView: View {
                     gauges
                 }
                 infoRows
-                if !server.topDisks.isEmpty {
-                    diskRows
+                if server.rxBytes != nil || server.txBytes != nil {
+                    trafficRows
                 }
                 if server.isVps {
                     xuiBlock
@@ -111,25 +111,29 @@ struct WatchDetailView: View {
         }
     }
 
-    private var diskRows: some View {
+    private var trafficRows: some View {
         VStack(alignment: .leading, spacing: 3) {
-            ForEach(server.topDisks, id: \.name) { disk in
-                HStack(spacing: 4) {
-                    Image(systemName: "internaldrive")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                    Text(disk.name)
-                        .font(.system(size: 10))
-                        .lineLimit(1)
-                    Spacer()
-                    Text("\(Int(disk.pct.rounded()))%")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(gaugeColor(disk.pct))
-                    Text("\(fmtGb(disk.usedGb))/\(fmtGb(disk.totalGb))")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                }
+            if let rx = server.rxBytes {
+                trafficRow("下行", bytes: rx, icon: "arrow.down.circle", color: .cyan)
             }
+            if let tx = server.txBytes {
+                trafficRow("上行", bytes: tx, icon: "arrow.up.circle", color: .orange)
+            }
+        }
+    }
+
+    private func trafficRow(_ label: String, bytes: Int64, icon: String, color: Color) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 9))
+                .foregroundStyle(color)
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(fmtBytes(bytes))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(color)
         }
     }
 

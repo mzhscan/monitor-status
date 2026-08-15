@@ -13,5 +13,10 @@
 	<array>
 		<string>fetch</string>
 	</array>
+	<!-- BGTaskScheduler 任务 ID 白名单：不声明会报 Registration rejected -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.mzhhua.monitorstatus.refresh</string>
+	</array>
 </dict>
 </plist>
