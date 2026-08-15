@@ -84,7 +84,7 @@ curl -fsSL https://raw.githubusercontent.com/mzhscan/monitor-status/main/deploy/
 
 > 自动化场景想跳过引导、传 flag 跑？看 `deploy/` 里每个脚本的 flag 列表。
 
-#### 💡 install 脚本改进（v2.4.25+）
+#### 💡 install 脚本改进
 
 - **env 自检**：写完 env 后立刻校验存在 + 非空 + 关键变量齐全，**杜绝"二进制下了但 env 缺失"导致死循环重启**这种坑。
 - **systemd StartLimit**：5 分钟内连挂 5 次就放弃，**不再无限重启**。
@@ -140,7 +140,7 @@ sudo systemctl restart server-monitor-relay
 
 ⚠️ **每个内网机器必须用独立 token**。一个 token 被多台机器共用会出现"数据在机器间跳变"（无公网服务端内存里同一个 token 只存一份最新数据，后 push 的覆盖前 push 的）。
 
-### 日志位置（v2.4.25+）
+### 日志位置
 
 **所有 monitor 服务的日志都不进 systemd journal** —— 各写到自己的文件，每天 logrotate 保留 4 天：
 
@@ -167,7 +167,7 @@ sudo tail -n 30 /var/log/server-monitor/<组件>.log
 
 app 端首次连自签证书时，会弹"是否信任"对话框显示 SHA-256 指纹，跟服务端核对一致后再信任。
 
-## 网页版（v2.4.26+）
+## 网页版
 
 不用装 app，浏览器打开就能看：
 
@@ -235,7 +235,7 @@ usvps|https://usvps.mzhhua.cn:9009/api/report|<有公网客户端的 AGENT_TOKEN
 - 共享密钥走 `X-Agent-Token` header（常量时间比较）
 - 公共 CA 证书（Let's Encrypt）自动信任
 - 自签 / 不可信 cert 走 TOFU 弹窗（显示 SHA-256 指纹，user 跟服务端核对）
-- token 存 Android Keystore（v2.3.0 起改用 `flutter_secure_storage`）
+- token 存 Android Keystore（用 `flutter_secure_storage`）
 - 「有公网客户端」默认监听全网卡，token 鉴权（**有公网暴露面**）。缓解方式：
   - `AGENT_BIND=127.0.0.1` + SSH 隧道 / WireGuard / Cloudflare Tunnel
   - 前面套 fail2ban + 反代限制来源 IP
